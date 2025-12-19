@@ -17,7 +17,7 @@ schedule_mode_desc = {
     1: "Compact Mode (09:00 - 16:00)",
     2: "Flexible Mode (08:30 - 19:00)"
 }
-SCHEDULE_MODE = st.sidebar.radio(
+SCHEDULE_MODE = st.radio(
     "Select Scheduling Mode:",
     options=[1, 2],
     format_func=lambda x: schedule_mode_desc[x]
