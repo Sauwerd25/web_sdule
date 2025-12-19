@@ -98,15 +98,15 @@ def run_scheduler():
     # --- Data Loading ---
     # หมายเหตุ: ใน Streamlit บน Cloud ไฟล์ CSV ต้องอยู่ในโฟลเดอร์เดียวกันหรือใช้ Upload
     try:
-        df_room = pd.read_csv('room.csv')
-        df_teacher_courses = pd.read_csv('teacher_courses.csv')
-        df_ai_in = pd.read_csv('ai_in_courses.csv')
-        df_cy_in = pd.read_csv('cy_in_courses.csv')
-        all_teacher = pd.read_csv('all_teachers.csv')
+        df_room = pd.read_csv('Web_schedule-main/Web_schedule-main/room.csv')
+        df_teacher_courses = pd.read_csv('Web_schedule-main/Web_schedule-main/teacher_courses.csv')
+        df_ai_in = pd.read_csv('Web_schedule-main/Web_schedule-main/ai_in_courses.csv')
+        df_cy_in = pd.read_csv('Web_schedule-main/Web_schedule-main/cy_in_courses.csv')
+        all_teacher = pd.read_csv('Web_schedule-main/Web_schedule-main/all_teachers.csv')
         
         # Fixed schedule files
-        df_ai_out = pd.read_csv('ai_out_courses.csv')
-        df_cy_out = pd.read_csv('cy_out_courses.csv')
+        df_ai_out = pd.read_csv('Web_schedule-main/Web_schedule-main/ai_out_courses.csv')
+        df_cy_out = pd.read_csv('Web_schedule-main/Web_schedule-main/cy_out_courses.csv')
         
         room_list = df_room.to_dict('records')
         room_list.append({'room': 'Online', 'capacity': 9999, 'type': 'virtual'})
