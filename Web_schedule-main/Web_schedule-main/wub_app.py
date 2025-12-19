@@ -125,7 +125,7 @@ def calculate_schedule():
     
     df_teacher_courses['course_code'] = df_teacher_courses['course_code'].astype(str).str.strip()
     df_courses['course_code'] = df_courses['course_code'].astype(str).str.strip()
-
+    progress_bar.progress(10)
     teacher_map = {}
     for _, row in df_teacher_courses.iterrows():
         c_code = row['course_code']
@@ -226,7 +226,7 @@ def calculate_schedule():
     SCORE_FIXED = 1000000
     SCORE_CORE_COURSE = 1000
     SCORE_ELECTIVE_COURSE = 100
-
+    progress_bar.progress(25)
     progress_bar = st.progress(0)
     st.info(f"Processing {len(tasks)} tasks...")
 
@@ -321,7 +321,6 @@ def calculate_schedule():
                 if active: model.Add(sum(active) <= 1)
 
     model.Maximize(sum(objective_terms) - sum(penalty_vars))
-    progress_bar.progress(25)
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 4
     solver.parameters.max_time_in_seconds = 120
