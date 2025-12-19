@@ -116,6 +116,7 @@ def calculate_schedule():
     df_teacher_courses.columns = df_teacher_courses.columns.str.strip()
     df_ai_in.columns = df_ai_in.columns.str.strip()
     df_cy_in.columns = df_cy_in.columns.str.strip()
+    progress_bar = st.progress(0)
     progress_bar.progress(10)
     df_courses = pd.concat([df_ai_in, df_cy_in], ignore_index=True)
     if 'lec_online' not in df_courses.columns: df_courses['lec_online'] = 0
@@ -226,7 +227,6 @@ def calculate_schedule():
     SCORE_CORE_COURSE = 1000
     SCORE_ELECTIVE_COURSE = 100
     progress_bar.progress(25)
-    progress_bar = st.progress(0)
     st.info(f"Processing {len(tasks)} tasks...")
 
     for t in tasks:
