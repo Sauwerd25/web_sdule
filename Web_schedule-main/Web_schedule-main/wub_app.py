@@ -12,7 +12,6 @@ st.title("🎓 Automatic Course Scheduler")
 # ==========================================
 # 1. User Config (UI Side)
 # ==========================================
-st.sidebar.header("Configuration")
 schedule_mode_desc = {
     1: "Compact Mode (09:00 - 16:00)",
     2: "Flexible Mode (08:30 - 19:00)"
