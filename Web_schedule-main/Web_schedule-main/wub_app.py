@@ -403,28 +403,59 @@ if st.session_state.get('has_run', False):
         all_rooms = sorted(df_res['Room'].unique())
         selected_room = st.selectbox("🔍 Select Room (เลือกห้องเรียน):", all_rooms)
 
+# ฟังก์ชันสร้างตารางเรียนแบบ Grid (ฉบับแก้ไข: รองรับเศษนาที)
         def create_timetable_grid(df, room_name):
-            hours = range(8, 20)
-            time_cols = [f"{h:02d}:00-{h+1:02d}:00" for h in hours if h < 19]
+            # 1. กำหนดช่วงเวลา (Slots) ให้เป็นตัวเลขทศนิยมเพื่อการเปรียบเทียบ
+            # เช่น 08:00-09:00 คือ start=8.0, end=9.0
+            slots = []
+            for h in range(8, 20): 
+                if h < 19:
+                    slots.append({
+                        "label": f"{h:02d}:00-{h+1:02d}:00",
+                        "start": float(h),
+                        "end": float(h+1)
+                    })
+            
+            # 2. สร้าง DataFrame ว่างๆ โดยใช้ Label เป็นชื่อคอลัมน์
+            col_names = [s['label'] for s in slots]
             days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-            grid_data = {t: [''] * 5 for t in time_cols}
-            df_grid = pd.DataFrame(grid_data, index=days)
+            df_grid = pd.DataFrame('', index=days, columns=col_names)
 
+            # ดึงข้อมูลเฉพาะห้องที่เลือก
             room_df = df[df['Room'] == room_name]
+
             for _, row in room_df.iterrows():
-                course_info = f"{row['Course']} ({row['Type']})\nSec {row['Sec']}"
+                # 3. แปลงเวลาเริ่ม-จบ เป็นตัวเลขทศนิยม (เช่น 09:30 -> 9.5)
                 try:
-                    start_h = int(row['Start'].split(':')[0])
-                    end_h = int(row['End'].split(':')[0])
-                except: continue
+                    s_parts = row['Start'].split(':')
+                    e_parts = row['End'].split(':')
+                    # ชั่วโมง + (นาที / 60)
+                    start_val = int(s_parts[0]) + (int(s_parts[1]) / 60.0)
+                    end_val = int(e_parts[0]) + (int(e_parts[1]) / 60.0)
+                except:
+                    continue # ข้ามถ้าเวลาผิดพลาด format
                 
-                for h in range(start_h, end_h):
-                    col_name = f"{h:02d}:00-{h+1:02d}:00"
-                    if col_name in df_grid.columns:
-                        if df_grid.at[row['Day'], col_name] != '':
-                            df_grid.at[row['Day'], col_name] += ' / ' + course_info
-                        else:
+                # ข้อความที่จะแสดงในช่อง (เพิ่มเวลาเข้าไปด้วย เพื่อความชัดเจน)
+                # เช่น "(09:30) LI101002"
+                short_start = f"{int(s_parts[0]):02d}:{int(s_parts[1]):02d}"
+                course_info = f"({short_start}) {row['Course']} ({row['Type']}) Sec {row['Sec']}"
+
+                # 4. วนลูปเช็คทุกช่อง (Slot) ว่าวิชานี้คาบเกี่ยวหรือไม่
+                for s in slots:
+                    # Logic การเช็ค Overlap: max(start1, start2) < min(end1, end2)
+                    # แปลว่า: ถ้าเวลาเริ่มวิชา น้อยกว่า เวลาจบช่อง AND เวลาจบวิชา มากกว่า เวลาเริ่มช่อง
+                    if max(start_val, s['start']) < min(end_val, s['end']):
+                        
+                        col_name = s['label']
+                        
+                        # ถ้าช่องนั้นว่าง ให้ใส่ข้อมูลเลย
+                        if df_grid.at[row['Day'], col_name] == '':
                             df_grid.at[row['Day'], col_name] = course_info
+                        else:
+                            # ถ้ามีข้อมูลอยู่แล้ว (และไม่ใช่ข้อความเดิม) ให้คั่นด้วย /
+                            if course_info not in df_grid.at[row['Day'], col_name]:
+                                df_grid.at[row['Day'], col_name] += ' / ' + course_info
+
             return df_grid
 
         if selected_room:
