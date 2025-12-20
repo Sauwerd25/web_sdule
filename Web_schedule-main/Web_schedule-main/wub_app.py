@@ -559,7 +559,7 @@ if st.session_state.get('has_run', False):
             st.subheader(f"📍 Timetable for: {selected_item}")
             mode_arg = "Room" if view_mode == "🏫 Room View" else "Teacher"
             grid_df = create_timetable_grid(df_res, selected_item, mode_arg)
-            st.dataframe(grid_df, use_container_width=True, height=300)
+            st.dataframe(grid_df, width="stretch", height=250)
 
         # Download CSV
         st.divider()
