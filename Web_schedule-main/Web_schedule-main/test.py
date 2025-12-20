@@ -115,7 +115,7 @@ def render_data_upload_section():
     return uploaded_data
 
 # ==========================================
-# 🧠 2. Solver Logic
+# 🧠 2. Solver Logic (Updated)
 # ==========================================
 def run_solver(data, config):
     df_room = data.get('df_room', pd.DataFrame())
@@ -191,40 +191,38 @@ def run_solver(data, config):
         teachers = teacher_map.get(c_code, ['Unknown'])
         is_opt = row.get('optional', 0)
 
-# [Logic เพิ่มเติม] บังคับ Lecture ต้องมาก่อน Lab
-    # 1. Group tasks by (Course, Section)
-    course_sec_map = {}
-    for t in tasks:
-        key = (t['id'], t['sec'])
-        if key not in course_sec_map:
-            course_sec_map[key] = {'Lec': [], 'Lab': []}
+        # Lecture
+        lec_dur = int(math.ceil(row.get('lecture_hour', 0) * 2))
+        if lec_dur > 0:
+            lock_info = fixed_locks.get((c_code, sec, 'Lec'))
+            curr_lec = lec_dur
+            p = 1
+            while curr_lec > 0:
+                dur = min(curr_lec, MAX_LEC_SESSION)
+                uid = f"{c_code}_S{sec}_L_P{p}"
+                tasks.append({
+                    'uid': uid, 'id': c_code, 'sec': sec, 'type': 'Lec',
+                    'dur': dur, 'std': enroll, 'teachers': teachers,
+                    'is_online': (row.get('lec_online', 0) == 1),
+                    'is_optional': is_opt,
+                    'fixed': lock_info
+                })
+                curr_lec -= dur
+                p += 1
         
-        # เก็บ Task UID ไว้
-        if t['type'] == 'Lec':
-            course_sec_map[key]['Lec'].append(t)
-        elif t['type'] == 'Lab':
-            course_sec_map[key]['Lab'].append(t)
-
-    # 2. Add Constraint: Lec_Start < Lab_Start (หรือ Lec_Day <= Lab_Day)
-    for key, val in course_sec_map.items():
-        lecs = val['Lec']
-        labs = val['Lab']
-        
-        if lecs and labs:
-            # สมมติวิชาหนึ่งมี Lec หลายคาบ (P1, P2) ให้เอาคาบสุดท้ายของ Lec เทียบ หรือเอาแค่คาบแรก
-            # ปกติ: บังคับให้ Day ของ Lab ต้อง >= Day ของ Lec
-            # หรือถ้าวันเดียวกัน Start ของ Lab ต้อง > End ของ Lec
-            
-            for l_task in lecs:
-                for lb_task in labs:
-                    l_uid = l_task['uid']
-                    lb_uid = lb_task['uid']
-                    
-                    if l_uid in task_vars and lb_uid in task_vars:
-                        # เงื่อนไข 1: Lab ต้องไม่เกิดก่อน Lec ในแง่ของเวลา (คร่าวๆ คือ slot Index)
-                        # task_vars[uid]['start'] คือ Slot เริ่มต้น
-                        
-                        model.Add(task_vars[lb_uid]['start'] >= task_vars[l_uid]['start'] + l_task['dur']).OnlyEnforceIf([is_scheduled[l_uid], is_scheduled[lb_uid]])
+        # Lab
+        lab_dur = int(math.ceil(row.get('lab_hour', 0) * 2))
+        if lab_dur > 0:
+            lock_info = fixed_locks.get((c_code, sec, 'Lab'))
+            tasks.append({
+                'uid': f"{c_code}_S{sec}_Lb", 'id': c_code, 'sec': sec, 'type': 'Lab',
+                'dur': lab_dur, 'std': enroll, 'teachers': teachers,
+                'is_online': (row.get('lab_online', 0) == 1),
+                'req_ai': (row.get('require_lab_ai', 0) == 1),
+                'req_net': (row.get('require_lab_network', 0) == 1),
+                'is_optional': is_opt,
+                'fixed': lock_info
+            })
 
     # --- Model Building ---
     model = cp_model.CpModel()
@@ -237,6 +235,7 @@ def run_solver(data, config):
     SCORE_CORE = 1000
     SCORE_ELEC = 100
 
+    # 1. สร้างตัวแปรและ Constraints พื้นฐาน
     for t in tasks:
         uid = t['uid']
         is_scheduled[uid] = model.NewBoolVar(f"sched_{uid}")
@@ -315,6 +314,34 @@ def run_solver(data, config):
         else: score = SCORE_ELEC
         objective_terms.append(is_scheduled[uid] * score)
 
+    # 2. [ย้ายมาไว้ตรงนี้] Logic เพิ่มเติม: บังคับ Lecture ต้องมาก่อน Lab
+    # ต้องทำหลังจากสร้าง task_vars เสร็จแล้วเท่านั้น
+    course_sec_map = {}
+    for t in tasks:
+        key = (t['id'], t['sec'])
+        if key not in course_sec_map:
+            course_sec_map[key] = {'Lec': [], 'Lab': []}
+        
+        if t['type'] == 'Lec':
+            course_sec_map[key]['Lec'].append(t)
+        elif t['type'] == 'Lab':
+            course_sec_map[key]['Lab'].append(t)
+
+    for key, val in course_sec_map.items():
+        lecs = val['Lec']
+        labs = val['Lab']
+        
+        if lecs and labs:
+            for l_task in lecs:
+                for lb_task in labs:
+                    l_uid = l_task['uid']
+                    lb_uid = lb_task['uid']
+                    
+                    # Constraint: เวลาเริ่ม Lab >= เวลาจบ Lec (เริ่ม Lec + ระยะเวลา)
+                    if l_uid in task_vars and lb_uid in task_vars:
+                         model.Add(task_vars[lb_uid]['start'] >= task_vars[l_uid]['start'] + l_task['dur']).OnlyEnforceIf([is_scheduled[l_uid], is_scheduled[lb_uid]])
+
+    # 3. Constraints ห้ามใช้ห้อง/ครูซ้ำซ้อน
     for d in range(len(DAYS)):
         for s in range(TOTAL_SLOTS):
             for r in room_list:
@@ -378,7 +405,6 @@ def run_solver(data, config):
                 unscheduled.append({'Course': t['id'], 'Sec': t['sec'], 'Type': t['type'], 'Reason': 'Constraint Conflict'})
     
     return pd.DataFrame(results), unscheduled
-
 # ==========================================
 # 🎨 3. Visualization Helper (CHANGED METHOD: Iframe Component)
 # ==========================================
