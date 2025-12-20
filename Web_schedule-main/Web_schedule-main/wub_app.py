@@ -27,24 +27,16 @@ st.write(f"**Current Mode:** {schedule_mode_desc[SCHEDULE_MODE]}")
 # ปุ่มกดเพื่อเริ่มการจัดตาราง
 run_button = st.button("🚀 Run Scheduler")
 st.sidebar.divider()
-st.sidebar.header("⚙️ 2. Scheduler Settings")
-
-# ตั้งค่าเวลาพักเที่ยง (Range Slider)
-lunch_time = st.sidebar.slider(
-    "Lunch Break Interval:",
-    min_value=11.0, max_value=14.0, value=(12.0, 13.0), step=0.5
-)
+st.header("⚙️ 2. Scheduler Settings")
 
 # ตั้งค่าเวลาให้ AI คิด (Solver Time)
-solver_limit = st.sidebar.number_input(
+solver_limit = st.number_input(
     "Max Calculation Time (seconds):", 
     min_value=10, max_value=600, value=120
 )
 
 # เก็บเป็น Dictionary เพื่อส่งเข้าฟังก์ชัน
 config_params = {
-    'LUNCH_START': lunch_time[0],
-    'LUNCH_END': lunch_time[1],
     'SOLVER_TIME': solver_limit
 }
 # ==========================================
