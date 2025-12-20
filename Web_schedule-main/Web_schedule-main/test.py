@@ -3,57 +3,19 @@ import pandas as pd
 from ortools.sat.python import cp_model
 import math
 import re
-import html  # เพิ่ม Library นี้เพื่อป้องกัน HTML หลุด
+import html
+import streamlit.components.v1 as components # 👈 เพิ่ม Library นี้
 
 # ==========================================
 # ⚙️ 0. Page Config & CSS Styling
 # ==========================================
 st.set_page_config(page_title="Auto Scheduler Pro", layout="wide", page_icon="🎓")
 
-# CSS สำหรับตกแต่ง
+# CSS สำหรับ UI หลักของ Streamlit (ส่วน Upload/Form)
 st.markdown("""
 <style>
-    .schedule-container {
-        display: grid;
-        grid-template-columns: 80px repeat(11, 1fr); 
-        gap: 2px;
-        background-color: #f0f2f6;
-        padding: 10px;
-        border-radius: 8px;
-        overflow-x: auto;
-    }
-    .header-cell {
-        background-color: #262730;
-        color: white;
-        padding: 8px;
-        text-align: center;
-        font-weight: bold;
-        border-radius: 4px;
-        font-size: 0.85em;
-    }
-    .day-cell {
-        background-color: #262730;
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        border-radius: 4px;
-    }
-    .class-card {
-        padding: 6px;
-        border-radius: 4px;
-        font-size: 0.75em;
-        line-height: 1.2;
-        color: white;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-        overflow: hidden;
-        transition: transform 0.1s;
-        cursor: pointer;
-    }
-    .class-card:hover { transform: scale(1.05); z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
-    .type-Lec { background-color: #4CAF50; border-left: 4px solid #2E7D32; }
-    .type-Lab { background-color: #2196F3; border-left: 4px solid #1565C0; }
+    /* ปรับแต่ง UI ทั่วไป */
+    .stApp { font-family: 'Sarabun', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -126,7 +88,6 @@ def render_data_upload_section():
     st.info("📂 **Step 1: Data Preparation**")
     uploaded_data = {}
     
-    # ⚠️ ตรวจสอบ Path นี้ให้ตรงกับเครื่องคุณ
     BASE_PATH = "Web_schedule-main/Web_schedule-main/" 
     
     file_configs = [
@@ -352,7 +313,6 @@ def run_solver(data, config):
         else: score = SCORE_ELEC
         objective_terms.append(is_scheduled[uid] * score)
 
-    # Conflict Constraints
     for d in range(len(DAYS)):
         for s in range(TOTAL_SLOTS):
             for r in room_list:
@@ -418,41 +378,113 @@ def run_solver(data, config):
     return pd.DataFrame(results), unscheduled
 
 # ==========================================
-# 🎨 3. Visualization Helper (Fixed HTML Escape)
+# 🎨 3. Visualization Helper (CHANGED METHOD: Iframe Component)
 # ==========================================
-def generate_html_timetable(df, title):
+def render_schedule_component(df, title):
     times = list(range(8, 20)) 
-    html_code = f"<h4 style='color:#333;'>📅 {title}</h4>"
-    html_code += "<div class='schedule-container'>"
-    html_code += "<div></div>"
-    for t in times[:-1]: html_code += f"<div class='header-cell'>{t:02d}:00</div>"
     
+    # CSS Styles (ยัดใส่ลงไปใน HTML String เลย)
+    styles = """
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 10px; }
+        h4 { color: #333; margin-bottom: 10px; }
+        .schedule-container {
+            display: grid;
+            grid-template-columns: 60px repeat(11, 1fr); 
+            gap: 2px;
+            background-color: #f0f2f6;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+            min-width: 800px;
+        }
+        .header-cell {
+            background-color: #262730;
+            color: white;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .day-cell {
+            background-color: #262730;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            border-radius: 4px;
+            height: 60px;
+        }
+        .grid-row {
+            grid-column: 2 / span 11; 
+            position: relative; 
+            height: 60px; 
+            background: #fff; 
+            border-bottom: 1px solid #eee;
+        }
+        .class-card {
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 11px;
+            line-height: 1.2;
+            color: white;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            overflow: hidden;
+            transition: transform 0.1s;
+            cursor: pointer;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .class-card:hover { transform: scale(1.05); z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+        .type-Lec { background-color: #4CAF50; border-left: 4px solid #2E7D32; }
+        .type-Lab { background-color: #2196F3; border-left: 4px solid #1565C0; }
+        b { display: block; margin-bottom: 2px; }
+    </style>
+    """
+
+    html_content = f"{styles}<h4>📅 {title}</h4><div class='schedule-container'><div></div>"
+    
+    # Headers
+    for t in times[:-1]: 
+        html_content += f"<div class='header-cell'>{t:02d}:00</div>"
+    
+    # Rows
     for day in DAYS:
-        html_code += f"<div class='day-cell'>{day}</div>"
-        day_tasks = df[df['Day'] == day].copy()
-        html_code += f"<div style='grid-column: 2 / span 11; position: relative; height: 60px; background: #fff; border-bottom: 1px solid #eee;'>"
+        html_content += f"<div class='day-cell'>{day}</div>"
+        html_content += f"<div class='grid-row'>"
         
+        day_tasks = df[df['Day'] == day].copy()
         for _, row in day_tasks.iterrows():
             start_offset = row['StartVal'] - 8.0
             duration_hr = row['Duration'] * 0.5
+            
+            # คำนวณ % ความกว้างและตำแหน่ง
             left_pct = (start_offset / 11.0) * 100
             width_pct = (duration_hr / 11.0) * 100
-            color_class = f"type-{row['Type']}"
             
-            # ⚠️ แก้ไข: ใช้ html.escape เพื่อป้องกัน ' หรือ " ในชื่อวิชาทำ HTML พัง
+            color_class = f"type-{row['Type']}"
             course_safe = html.escape(str(row['Course']))
             room_safe = html.escape(str(row['Room']))
             tooltip = f"{course_safe} ({row['Type']}) {row['Start']}-{row['End']} @ {room_safe}"
             
-            html_code += f"""
-            <div class='class-card {color_class}' style='position: absolute; left: {left_pct}%; width: {width_pct}%; top: 2px; bottom: 2px;' 
+            html_content += f"""
+            <div class='class-card {color_class}' 
+                 style='position: absolute; left: {left_pct}%; width: {width_pct}%; top: 2px; bottom: 2px;' 
                  title="{tooltip}">
-                <b>{course_safe}</b><br>{room_safe}
+                <b>{course_safe}</b>
+                <span>{room_safe}</span>
             </div>
             """
-        html_code += "</div>"
-    html_code += "</div>"
-    return html_code
+        html_content += "</div>" # End row
+    
+    html_content += "</div>" # End container
+
+    # ✅ ใช้ components.html แทน st.markdown เพื่อแก้ปัญหา HTML หลุด
+    components.html(html_content, height=450, scrolling=True)
 
 # ==========================================
 # 🚀 Main App Flow
@@ -489,7 +521,6 @@ with tab2:
 with tab3:
     if st.session_state.get('has_run', False) and st.session_state['schedule'] is not None:
         df = st.session_state['schedule']
-        # ใช้ .get() เพื่อป้องกัน KeyError ในกรณีตัวแปรหาย
         un_list = st.session_state.get('unscheduled', [])
         
         # Summary Metrics
@@ -523,14 +554,13 @@ with tab3:
             else:
                 df_filtered = df[df['Teachers'].str.contains(selected, regex=False)]
 
-        # Render HTML
-        st.markdown(generate_html_timetable(df_filtered, f"{view_type}: {selected}"), unsafe_allow_html=True)
+        # ✅ เรียกใช้ฟังก์ชันแสดงผลใหม่
+        render_schedule_component(df_filtered, f"{view_type}: {selected}")
         
         # Unscheduled Section
         if un_list:
             st.divider()
             with st.expander(f"⚠️ Unscheduled Classes ({len(un_list)})", expanded=False):
-                # ⚠️ แก้ไข: ใช้ width="stretch" แทน use_container_width เพื่อแก้ Warning
                 st.dataframe(pd.DataFrame(un_list), width=1000) 
 
         # Download
