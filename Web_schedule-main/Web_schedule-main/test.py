@@ -290,6 +290,7 @@ def run_solver(data, config):
 
     # Solve
     solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 6
     solver.parameters.max_time_in_seconds = config['TIMEOUT']
     status = solver.Solve(model)
 
