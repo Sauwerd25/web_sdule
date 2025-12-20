@@ -11,10 +11,10 @@ st.title("🎓 Automatic Course Scheduler (Pro Version)")
 # ==========================================
 # 📂 ส่วนที่ 1: Sidebar - Upload & Config
 # ==========================================
-st.sidebar.header("📂 1. Data Source")
+st.header("📂 1. Data Source")
 
 # 1.1 File Uploader
-uploaded_files = st.sidebar.file_uploader(
+uploaded_files = st.file_uploader(
     "Upload CSV files (Optional)", 
     accept_multiple_files=True, 
     type=['csv'],
@@ -53,9 +53,9 @@ missing_keys = [k for k in DEFAULT_PATHS if k not in data_store]
 
 if missing_keys:
     if not uploaded_files:
-        st.sidebar.info("ℹ️ No files uploaded. Using default data.")
+        st.info("ℹ️ No files uploaded. Using default data.")
     else:
-        st.sidebar.warning(f"⚠️ Upload incomplete. Loading defaults for missing files...")
+        st.warning(f"⚠️ Upload incomplete. Loading defaults for missing files...")
 
     # วนลูปโหลดไฟล์ที่ขาด
     load_errors = []
@@ -69,15 +69,15 @@ if missing_keys:
             load_errors.append(f"{key}: {str(e)}")
     
     if load_errors:
-        st.sidebar.error(f"❌ Failed to load defaults:\n" + "\n".join(load_errors))
+        st.error(f"❌ Failed to load defaults:\n" + "\n".join(load_errors))
     else:
         # ถ้าโหลด Default สำเร็จครบ
         if len(data_store) == 7:
-            st.sidebar.success(f"✅ Ready! Loaded {len(data_store)} datasets.")
+            st.success(f"✅ Ready! Loaded {len(data_store)} datasets.")
 
 # เช็คครั้งสุดท้ายก่อนไปต่อ
 if len(data_store) < 7:
-    st.sidebar.error("❌ Critical Error: Missing Data. Please upload files or check default paths.")
+    st.error("❌ Critical Error: Missing Data. Please upload files or check default paths.")
     st.stop() # หยุดการทำงานถ้ารวบรวมไฟล์ไม่ได้เลย
 
 st.header("⚙️ 2. Settings")
