@@ -59,6 +59,16 @@ st.markdown("""
 st.title("🎓 Automatic Course Scheduler (Pro + Refactored)")
 
 # ==========================================
+# 🔧 Session State Initialization (NEW: Fixes KeyError)
+# ==========================================
+if 'schedule' not in st.session_state:
+    st.session_state['schedule'] = None
+if 'unscheduled' not in st.session_state:
+    st.session_state['unscheduled'] = []
+if 'has_run' not in st.session_state:
+    st.session_state['has_run'] = False
+
+# ==========================================
 # 🛠️ Helper Functions
 # ==========================================
 DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
@@ -485,6 +495,7 @@ with tab2:
                 if res_df is not None and not res_df.empty:
                     st.session_state['schedule'] = res_df
                     st.session_state['unscheduled'] = un_list
+                    st.session_state['has_run'] = True
                     st.success(f"✅ Success! Scheduled {len(res_df)} classes.")
                 else:
                     st.error("❌ Failed to find a valid schedule. Try increasing time or relaxing constraints.")
@@ -492,7 +503,7 @@ with tab2:
             st.error("Please upload data first.")
 
 with tab3:
-    if 'schedule' in st.session_state:
+    if st.session_state.get('has_run', False) and st.session_state['schedule'] is not None:
         df = st.session_state['schedule']
         un_list = st.session_state['unscheduled']
         
@@ -534,7 +545,8 @@ with tab3:
         if un_list:
             st.divider()
             with st.expander(f"⚠️ Unscheduled Classes ({len(un_list)})", expanded=False):
-                st.dataframe(pd.DataFrame(un_list))
+                # ใช้ width="stretch" แทน use_container_width เพื่อแก้ warning
+                st.dataframe(pd.DataFrame(un_list), width=1000) 
 
         # Download
         st.divider()
