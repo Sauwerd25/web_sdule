@@ -15,6 +15,15 @@ st.title("🎓 Automatic Course Scheduler")
 # ปุ่มกดเพื่อเริ่มการจัดตาราง
 st.header("⚙️Scheduler Settings")
 
+schedule_mode_desc = {
+    1: "Compact Mode (09:00 - 16:00)",
+    2: "Flexible Mode (08:30 - 19:00)"
+}
+SCHEDULE_MODE = st.radio(
+    "Select Scheduling Mode:",
+    options=[1, 2],
+    format_func=lambda x: schedule_mode_desc[x]
+)
 # ตั้งค่าเวลาให้ AI คิด (Solver Time)
 solver_limit = st.slider(
     "Max Calculation Time (120 seconds)", 
@@ -25,16 +34,6 @@ solver_limit = st.slider(
 config_params = {
     'SOLVER_TIME': solver_limit
 }
-
-schedule_mode_desc = {
-    1: "Compact Mode (09:00 - 16:00)",
-    2: "Flexible Mode (08:30 - 19:00)"
-}
-SCHEDULE_MODE = st.radio(
-    "Select Scheduling Mode:",
-    options=[1, 2],
-    format_func=lambda x: schedule_mode_desc[x]
-)
 
 st.write(f"**Current Mode:** {schedule_mode_desc[SCHEDULE_MODE]}")
 
