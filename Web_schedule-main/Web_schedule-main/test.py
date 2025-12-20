@@ -3,6 +3,7 @@ import pandas as pd
 from ortools.sat.python import cp_model
 import math
 import re
+import html  # เพิ่ม Library นี้เพื่อป้องกัน HTML หลุด
 
 # ==========================================
 # ⚙️ 0. Page Config & CSS Styling
@@ -59,7 +60,7 @@ st.markdown("""
 st.title("🎓 Automatic Course Scheduler (Pro + Refactored)")
 
 # ==========================================
-# 🔧 Session State Initialization (NEW: Fixes KeyError)
+# 🔧 Session State Initialization
 # ==========================================
 if 'schedule' not in st.session_state:
     st.session_state['schedule'] = None
@@ -74,23 +75,19 @@ if 'has_run' not in st.session_state:
 DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
 def time_to_slot_index(time_str, slot_map):
-    # แปลงสตริงเวลา (09:00) เป็น index ของ slot
     time_str = str(time_str).strip()
     match = re.search(r"(\d{1,2})[:.](\d{2})", time_str)
     if match:
         h, m = match.groups()
         t_val = int(h) + (int(m) / 60.0)
-        # หา index ที่ใกล้เคียงที่สุด
         for idx, info in slot_map.items():
             if abs(info['val'] - t_val) < 0.01:
                 return idx
     return -1
 
 def parse_unavailable_time(unavailable_input, slot_map):
-    # แปลง Unavailable String เป็น Set ของ Slot Index ที่ห้ามลง
     unavailable_slots_by_day = {d_idx: set() for d_idx in range(len(DAYS))}
     
-    # Handle NaN or None
     if pd.isna(unavailable_input) or unavailable_input == "":
         return unavailable_slots_by_day
 
@@ -104,12 +101,11 @@ def parse_unavailable_time(unavailable_input, slot_map):
         else: ut_str = str(item)
 
         ut_str = ut_str.replace('[', '').replace(']', '').replace("'", "").replace('"', "")
-        # Regex จับแพทเทิร์น "Mon 09:00-12:00"
         match = re.search(r"(\w{3})\s+(\d{1,2}[:.]\d{2})-(\d{1,2}[:.]\d{2})", ut_str, re.IGNORECASE)
         if not match: continue
 
         day_abbr, start_time_str, end_time_str = match.groups()
-        day_abbr = day_abbr.capitalize() # ป้องกัน mon -> Mon
+        day_abbr = day_abbr.capitalize()
 
         try: day_idx = DAYS.index(day_abbr)
         except ValueError: continue
@@ -152,7 +148,6 @@ def render_data_upload_section():
                     try: uploaded_data[key] = pd.read_csv(file)
                     except Exception as e: st.error(f"Error reading {filename}: {e}")
                 else:
-                    # Try loading default
                     try: uploaded_data[key] = pd.read_csv(f"{BASE_PATH}{filename}")
                     except: uploaded_data[key] = pd.DataFrame() # Empty if not found
 
@@ -162,7 +157,6 @@ def render_data_upload_section():
 # 🧠 2. Solver Logic
 # ==========================================
 def run_solver(data, config):
-    # Unpack Data
     df_room = data.get('df_room', pd.DataFrame())
     df_teacher_courses = data.get('df_teacher_courses', pd.DataFrame())
     all_teacher = data.get('all_teacher', pd.DataFrame())
@@ -171,13 +165,12 @@ def run_solver(data, config):
     df_ai_out = data.get('df_ai_out', pd.DataFrame()) 
     df_cy_out = data.get('df_cy_out', pd.DataFrame()) 
 
-    # Check Critical Data
     if df_room.empty or df_teacher_courses.empty:
         return None, [{"Reason": "Missing Critical Data (Room or Teachers)"}]
 
-    # --- 2.1 Time Slot Setup ---
+    # --- Time Slot Setup ---
     SLOT_MAP = {}
-    t_start = 8.5 # 08:30
+    t_start = 8.5
     idx = 0
     while t_start < 19.0:
         h = int(t_start)
@@ -187,25 +180,23 @@ def run_solver(data, config):
         t_start += 0.5
     TOTAL_SLOTS = len(SLOT_MAP)
 
-    # --- 2.2 Data Pre-processing ---
+    # --- Data Pre-processing ---
     for df in [df_room, df_teacher_courses, df_ai_in, df_cy_in, all_teacher, df_ai_out, df_cy_out]:
         if not df.empty: df.columns = df.columns.str.strip()
 
-    # Teacher Unavailability Parsing
     TEACHER_UNAVAILABLE_SLOTS = {}
     if not all_teacher.empty and 'unavailable_times' in all_teacher.columns:
         all_teacher['teacher_id'] = all_teacher['teacher_id'].astype(str).str.strip()
         for _, row in all_teacher.iterrows():
             TEACHER_UNAVAILABLE_SLOTS[row['teacher_id']] = parse_unavailable_time(row['unavailable_times'], SLOT_MAP)
 
-    # Fixed Schedule Parsing
     fixed_locks = {} 
     for df_fixed in [df_ai_out, df_cy_out]:
         if df_fixed.empty: continue
         for _, row in df_fixed.iterrows():
             try:
                 c_code = str(row['course_code']).strip()
-                sec = int(row['section']) # Force int
+                sec = int(row['section'])
                 day_str = str(row['day']).strip().capitalize()[:3]
                 
                 if row.get('lecture_hour', 0) > 0:
@@ -214,7 +205,6 @@ def run_solver(data, config):
                     fixed_locks[(c_code, sec, 'Lab')] = {'day': day_str, 'start': str(row['start']), 'room': str(row['room'])}
             except: continue
 
-    # Course Merge & Map
     df_courses = pd.concat([df_ai_in, df_cy_in], ignore_index=True).fillna(0)
     teacher_map = {}
     df_teacher_courses['course_code'] = df_teacher_courses['course_code'].astype(str).str.strip()
@@ -227,13 +217,13 @@ def run_solver(data, config):
     room_list = df_room.to_dict('records')
     room_list.append({'room': 'Online', 'capacity': 9999, 'type': 'virtual'})
 
-    # --- 2.3 Task Generation ---
+    # --- Task Generation ---
     tasks = []
     MAX_LEC_SESSION = 6 
 
     for _, row in df_courses.iterrows():
         c_code = str(row['course_code']).strip()
-        try: sec = int(row['section']) # Force int conversion
+        try: sec = int(row['section'])
         except: sec = row['section']
         
         enroll = row.get('enrollment_count', 30)
@@ -273,7 +263,7 @@ def run_solver(data, config):
                 'fixed': lock_info
             })
 
-    # --- 2.4 Model Building ---
+    # --- Model Building ---
     model = cp_model.CpModel()
     schedule = {}
     is_scheduled = {}
@@ -294,7 +284,6 @@ def run_solver(data, config):
         model.Add(t_end == t_start + t['dur'])
         task_vars[uid] = {'day': t_day, 'start': t_start}
 
-        # Apply Fixed Constraint
         if t.get('fixed'):
             try:
                 f_day_idx = DAYS.index(t['fixed']['day'])
@@ -305,7 +294,6 @@ def run_solver(data, config):
 
         candidates = []
         for r in room_list:
-            # Room Checks
             if t.get('fixed') and t['fixed']['room'] != r['room']: continue
             if t['is_online']:
                 if r['room'] != 'Online': continue
@@ -327,19 +315,15 @@ def run_solver(data, config):
                         f_start = time_to_slot_index(t['fixed']['start'], SLOT_MAP)
                         if s != f_start: continue
                     
-                    # Constraints (if not fixed)
                     if not t.get('fixed'):
                         e_val = SLOT_MAP[s + t['dur'] - 1]['val'] + 0.5
-                        if config['MODE'] == 1: # Compact
-                            if s_val < 9.0 or e_val > 16.0: continue
+                        if config['MODE'] == 1 and (s_val < 9.0 or e_val > 16.0): continue
                         
-                        # Lunch
                         overlap_lunch = False
                         for k in range(t['dur']):
                             if SLOT_MAP[s+k]['is_lunch']: overlap_lunch = True
                         if overlap_lunch: continue
 
-                        # Teacher Unavailability
                         teacher_conflict = False
                         for tea in t['teachers']:
                             if tea in TEACHER_UNAVAILABLE_SLOTS:
@@ -350,7 +334,6 @@ def run_solver(data, config):
                                     break
                         if teacher_conflict: continue
 
-                    # Create Var
                     var = model.NewBoolVar(f"{uid}_{r['room']}_{d}_{s}")
                     schedule[(uid, r['room'], d, s)] = var
                     candidates.append(var)
@@ -364,14 +347,12 @@ def run_solver(data, config):
         else:
             model.Add(is_scheduled[uid] == 0)
 
-        # Score
         if t.get('fixed'): score = SCORE_FIXED
         elif t.get('is_optional') == 0: score = SCORE_CORE
         else: score = SCORE_ELEC
         objective_terms.append(is_scheduled[uid] * score)
 
-    # --- Conflict Constraints ---
-    # 1. Room Overlap
+    # Conflict Constraints
     for d in range(len(DAYS)):
         for s in range(TOTAL_SLOTS):
             for r in room_list:
@@ -384,7 +365,6 @@ def run_solver(data, config):
                             if key in schedule: active.append(schedule[key])
                 if active: model.Add(sum(active) <= 1)
 
-    # 2. Teacher Overlap
     all_teachers_set = set(tea for t in tasks for tea in t['teachers'] if tea != 'Unknown')
     for tea in all_teachers_set:
         for d in range(len(DAYS)):
@@ -399,7 +379,6 @@ def run_solver(data, config):
                                     if key in schedule: active.append(schedule[key])
                 if active: model.Add(sum(active) <= 1)
 
-    # Solve
     model.Maximize(sum(objective_terms))
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 4
@@ -439,19 +418,19 @@ def run_solver(data, config):
     return pd.DataFrame(results), unscheduled
 
 # ==========================================
-# 🎨 3. Visualization Helper
+# 🎨 3. Visualization Helper (Fixed HTML Escape)
 # ==========================================
 def generate_html_timetable(df, title):
     times = list(range(8, 20)) 
-    html = f"<h4 style='color:#333;'>📅 {title}</h4>"
-    html += "<div class='schedule-container'>"
-    html += "<div></div>"
-    for t in times[:-1]: html += f"<div class='header-cell'>{t:02d}:00</div>"
+    html_code = f"<h4 style='color:#333;'>📅 {title}</h4>"
+    html_code += "<div class='schedule-container'>"
+    html_code += "<div></div>"
+    for t in times[:-1]: html_code += f"<div class='header-cell'>{t:02d}:00</div>"
     
     for day in DAYS:
-        html += f"<div class='day-cell'>{day}</div>"
+        html_code += f"<div class='day-cell'>{day}</div>"
         day_tasks = df[df['Day'] == day].copy()
-        html += f"<div style='grid-column: 2 / span 11; position: relative; height: 60px; background: #fff; border-bottom: 1px solid #eee;'>"
+        html_code += f"<div style='grid-column: 2 / span 11; position: relative; height: 60px; background: #fff; border-bottom: 1px solid #eee;'>"
         
         for _, row in day_tasks.iterrows():
             start_offset = row['StartVal'] - 8.0
@@ -460,15 +439,20 @@ def generate_html_timetable(df, title):
             width_pct = (duration_hr / 11.0) * 100
             color_class = f"type-{row['Type']}"
             
-            html += f"""
+            # ⚠️ แก้ไข: ใช้ html.escape เพื่อป้องกัน ' หรือ " ในชื่อวิชาทำ HTML พัง
+            course_safe = html.escape(str(row['Course']))
+            room_safe = html.escape(str(row['Room']))
+            tooltip = f"{course_safe} ({row['Type']}) {row['Start']}-{row['End']} @ {room_safe}"
+            
+            html_code += f"""
             <div class='class-card {color_class}' style='position: absolute; left: {left_pct}%; width: {width_pct}%; top: 2px; bottom: 2px;' 
-                 title='{row['Course']} ({row['Type']}) {row['Start']}-{row['End']} @ {row['Room']}'>
-                <b>{row['Course']}</b><br>{row['Room']}
+                 title="{tooltip}">
+                <b>{course_safe}</b><br>{room_safe}
             </div>
             """
-        html += "</div>"
-    html += "</div>"
-    return html
+        html_code += "</div>"
+    html_code += "</div>"
+    return html_code
 
 # ==========================================
 # 🚀 Main App Flow
@@ -505,7 +489,8 @@ with tab2:
 with tab3:
     if st.session_state.get('has_run', False) and st.session_state['schedule'] is not None:
         df = st.session_state['schedule']
-        un_list = st.session_state['unscheduled']
+        # ใช้ .get() เพื่อป้องกัน KeyError ในกรณีตัวแปรหาย
+        un_list = st.session_state.get('unscheduled', [])
         
         # Summary Metrics
         c1, c2, c3 = st.columns(3)
@@ -545,7 +530,7 @@ with tab3:
         if un_list:
             st.divider()
             with st.expander(f"⚠️ Unscheduled Classes ({len(un_list)})", expanded=False):
-                # ใช้ width="stretch" แทน use_container_width เพื่อแก้ warning
+                # ⚠️ แก้ไข: ใช้ width="stretch" แทน use_container_width เพื่อแก้ Warning
                 st.dataframe(pd.DataFrame(un_list), width=1000) 
 
         # Download
