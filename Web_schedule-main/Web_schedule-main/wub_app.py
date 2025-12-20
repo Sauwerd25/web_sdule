@@ -456,6 +456,7 @@ def calculate_schedule(data_store, config):
 
 # ปุ่ม Run ทำงาน
 if run_button:
+    my_bar.progress(10, text="👌")
     res_list, un_list = calculate_schedule(data_store, config_params)
     
     if res_list is not None:
