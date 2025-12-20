@@ -3,301 +3,450 @@ import pandas as pd
 from ortools.sat.python import cp_model
 import math
 import re
-import os
-from collections import defaultdict
 
 # ==========================================
-# 1. Page Config & CSS (แก้ไขสีหัวตารางให้อ่านออกชัดเจน)
+# ⚙️ 0. Page Config & CSS Styling
 # ==========================================
-st.set_page_config(page_title="Automatic Scheduler Pro", layout="wide")
+st.set_page_config(page_title="Auto Scheduler Pro", layout="wide", page_icon="🎓")
 
+# CSS สำหรับตกแต่งตารางสอนให้สวยงาม
 st.markdown("""
 <style>
-    .tt-container { overflow-x: auto; font-family: 'Helvetica', sans-serif; margin-top: 20px; }
-    .tt-table { width: 100%; border-collapse: collapse; min-width: 1200px; }
-    
-    /* หัวตาราง: พื้นหลังเข้ม ฟอนต์ขาวชัดเจน */
-    .tt-table th { 
-        background-color: #343a40 !important; 
-        color: #ffffff !important; 
-        border: 1px solid #444; 
-        text-align: center; 
-        padding: 8px; 
-        font-size: 14px; 
+    .schedule-container {
+        display: grid;
+        grid-template-columns: 80px repeat(11, 1fr); /* Time labels + 11 slots */
+        gap: 2px;
+        background-color: #f0f2f6;
+        padding: 10px;
+        border-radius: 8px;
+        overflow-x: auto;
     }
-    
-    .tt-table td { border: 1px solid #dee2e6; text-align: center; padding: 4px; height: 75px; }
-
-    /* คอลัมน์ Day: พื้นหลังเทาอ่อน ฟอนต์ดำเข้ม */
-    .tt-day { 
-        background-color: #f8f9fa !important; 
-        color: #333333 !important; 
-        font-weight: bold !important; 
-        width: 80px; 
-        position: sticky; 
-        left: 0; 
-        z-index: 10; 
-        border-right: 2px solid #ccc !important; 
-        font-size: 14px !important;
+    .header-cell {
+        background-color: #262730;
+        color: white;
+        padding: 8px;
+        text-align: center;
+        font-weight: bold;
+        border-radius: 4px;
+        font-size: 0.85em;
     }
-
-    .class-box { 
-        background-color: #e7f1ff; border: 1px solid #b6d4fe; border-radius: 6px;
-        padding: 4px; height: 95%; display: flex; flex-direction: column; justify-content: center;
-        color: #084298 !important; box-shadow: 1px 1px 3px rgba(0,0,0,0.1); font-size: 10px; line-height: 1.2;
+    .day-cell {
+        background-color: #262730;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        border-radius: 4px;
     }
-    .c-code { font-weight: bold; text-decoration: underline; font-size: 12px; color: #004085 !important; }
+    .class-card {
+        padding: 6px;
+        border-radius: 4px;
+        font-size: 0.8em;
+        line-height: 1.2;
+        color: white;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        overflow: hidden;
+        transition: transform 0.1s;
+    }
+    .class-card:hover {
+        transform: scale(1.02);
+        z-index: 10;
+    }
+    .type-Lec { background-color: #4CAF50; border-left: 4px solid #2E7D32; }
+    .type-Lab { background-color: #2196F3; border-left: 4px solid #1565C0; }
 </style>
 """, unsafe_allow_html=True)
 
+st.title("🎓 Automatic Course Scheduler (Refactored)")
+
 # ==========================================
-# 2. Helper Functions (Python 3.13 Compatible)
+# 📂 1. Data Management Section
 # ==========================================
-def get_slot_map():
-    slots = {}
-    t_start = 8.5
+def render_data_upload_section():
+    st.info("📂 **Step 1: Data Preparation** | Please upload the required CSV files below.")
+    
+    # สร้าง Dictionary เพื่อเก็บไฟล์ที่อัปโหลด
+    uploaded_data = {}
+    
+    # รายชื่อไฟล์ที่ต้องการ (Label, Key Map)
+    file_configs = [
+        ("1. Room Data (room.csv)", "df_room"),
+        ("2. Teachers List (all_teachers.csv)", "all_teacher"),
+        ("3. Teacher Courses (teacher_courses.csv)", "df_teacher_courses"),
+        ("4. AI Courses IN (ai_in.csv)", "df_ai_in"),
+        ("5. Cyber Courses IN (cy_in.csv)", "df_cy_in"),
+        ("6. AI Courses OUT (ai_out.csv)", "df_ai_out"),
+        ("7. Cyber Courses OUT (cy_out.csv)", "df_cy_out"),
+    ]
+
+    # จัดวาง Layout แบบ Grid (4 แถว 2 คอลัมน์)
+    cols = st.columns(2)
+    for i, (label, key) in enumerate(file_configs):
+        with cols[i % 2]:
+            file = st.file_uploader(label, type=['csv'], key=key)
+            if file:
+                uploaded_data[key] = pd.read_csv(file)
+            else:
+                # Default Logic (ถ้าไม่อัปโหลด ให้ลองหาไฟล์ Default)
+                try:
+                    # ⚠️ แก้ Path ตรงนี้ให้ตรงกับโฟลเดอร์จริงของคุณ
+                    default_path = f"Web_schedule-main/Web_schedule-main/{label.split('(')[1].replace(')', '')}"
+                    # uploaded_data[key] = pd.read_csv(default_path) # Uncomment บรรทัดนี้ถ้าจะใช้ Default
+                    pass
+                except:
+                    pass
+    
+    # ตรวจสอบว่าครบไหม
+    missing = [k for _, k in file_configs if k not in uploaded_data]
+    
+    if not missing:
+        st.success(f"✅ All {len(uploaded_data)} datasets loaded successfully!")
+        return uploaded_data
+    else:
+        st.warning(f"⚠️ Missing files: {len(missing)} files. Please upload to proceed.")
+        return None
+
+# ==========================================
+# 🧠 2. Solver Logic (Core)
+# ==========================================
+def run_solver(data, config):
+    # Unpack Data
+    df_room = data['df_room']
+    df_teacher_courses = data['df_teacher_courses']
+    df_ai_in = data['df_ai_in']
+    df_cy_in = data['df_cy_in']
+    all_teacher = data['all_teacher']
+    df_ai_out = data['df_ai_out']
+    df_cy_out = data['df_cy_out']
+
+    # --- 2.1 Time Slot Config ---
+    SLOT_MAP = {}
+    t_start = 8.5 # เริ่ม 08:30 (Slot 0) -> จบ 19:00
     idx = 0
-    while t_start <= 19.0: # ครอบคลุมถึงเวลาเลิก 19:00 เพื่อไม่ให้ Crash
-        h, m = int(t_start), round((t_start % 1) * 60)
-        slots[idx] = {'time': f"{h:02d}:{m:02d}", 'val': t_start, 'is_lunch': (12.5 <= t_start < 13.0)}
-        idx += 1; t_start += 0.5
-    return slots
-
-def time_to_slot_index(time_str, slot_inv):
-    time_str = str(time_str).strip().replace('.', ':')
-    match = re.search(r"(\d{1,2}):(\d{2})", time_str)
-    if match:
-        h, m = match.groups()
-        formatted = f"{int(h):02d}:{int(m):02d}"
-        return slot_inv.get(formatted, -1)
-    return -1
-
-def parse_unavailable_time(input_val, days_list, slot_inv):
-    un_slots = {d: set() for d in range(len(days_list))}
-    if pd.isna(input_val) or not input_val: return un_slots
-    items = input_val if isinstance(input_val, list) else [str(input_val)]
-    for item in items:
-        match = re.search(r"(\w{3})\s+(\d{1,2}[:.]\d{2})-(\d{1,2}[:.]\d{2})", str(item))
-        if match:
-            day_abbr, start_t, end_t = match.groups()
-            if day_abbr in days_list:
-                d_idx = days_list.index(day_abbr)
-                s_i = time_to_slot_index(start_t, slot_inv)
-                e_i = time_to_slot_index(end_t, slot_inv)
-                if s_i != -1 and e_i != -1:
-                    for s in range(s_i, e_i): un_slots[d_idx].add(s)
-    return un_slots
-
-# ==========================================
-# 3. Solver Engine
-# ==========================================
-def calculate_schedule(data_dict, mode, solver_time, penalty_val):
-    SLOT_MAP = get_slot_map()
-    DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-    SLOT_INV = {v['time']: k for k, v in SLOT_MAP.items()}
+    while t_start < 19.0:
+        h = int(t_start)
+        m = int((t_start - h) * 60)
+        time_str = f"{h:02d}:{m:02d}"
+        SLOT_MAP[idx] = {'time': time_str, 'val': t_start, 'is_lunch': (12.0 <= t_start < 13.0)}
+        idx += 1
+        t_start += 0.5
+    
     TOTAL_SLOTS = len(SLOT_MAP)
+    DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+    
+    # --- 2.2 Pre-processing ---
+    # (Clean Columns)
+    for df in [df_room, df_teacher_courses, df_ai_in, df_cy_in, all_teacher, df_ai_out, df_cy_out]:
+        df.columns = df.columns.str.strip()
 
-    try:
-        room_list = data_dict['room'].to_dict('records')
-        room_list.append({'room': 'Online', 'capacity': 9999, 'type': 'virtual'})
-        df_tc = data_dict['teacher_courses']
-        df_courses = pd.concat([data_dict['ai_in'], data_dict['cy_in']], ignore_index=True).fillna(0)
-        df_teacher = data_dict['all_teachers']
+    # (Merge Courses)
+    df_courses = pd.concat([df_ai_in, df_cy_in], ignore_index=True).fillna(0)
+    
+    # (Teacher Map)
+    teacher_map = {}
+    df_teacher_courses['course_code'] = df_teacher_courses['course_code'].astype(str).str.strip()
+    for _, row in df_teacher_courses.iterrows():
+        c = row['course_code']
+        t = str(row['teacher_id']).strip()
+        if c not in teacher_map: teacher_map[c] = []
+        teacher_map[c].append(t)
 
-        teacher_map = defaultdict(list)
-        for _, row in df_tc.iterrows():
-            teacher_map[str(row['course_code']).strip()].append(str(row['teacher_id']).strip())
+    # (Room List)
+    room_list = df_room.to_dict('records')
+    room_list.append({'room': 'Online', 'capacity': 9999, 'type': 'virtual'})
+
+    # (Task Generation)
+    tasks = []
+    MAX_LEC_SESSION = 6 # Max contiguous slots
+    
+    for _, row in df_courses.iterrows():
+        c_code = str(row['course_code']).strip()
+        sec = row['section']
+        # คำนวณ Slot (1 ชั่วโมง = 2 slots)
+        lec_dur = int(math.ceil(row.get('lecture_hour', 0) * 2))
+        lab_dur = int(math.ceil(row.get('lab_hour', 0) * 2))
+        teachers = teacher_map.get(c_code, ['Unknown'])
         
-        un_map = {str(row['teacher_id']).strip(): parse_unavailable_time(row.get('unavailable_times'), DAYS, SLOT_INV) for _, row in df_teacher.iterrows()}
+        # Split Lec
+        curr_lec = lec_dur
+        p = 1
+        while curr_lec > 0:
+            dur = min(curr_lec, MAX_LEC_SESSION)
+            tasks.append({
+                'uid': f"{c_code}_S{sec}_L_P{p}", 'id': c_code, 'sec': sec, 'type': 'Lec',
+                'dur': dur, 'std': row.get('enrollment_count', 30), 'teachers': teachers,
+                'is_online': (row.get('lec_online', 0) == 1),
+                'req_ai': False, 'req_net': False
+            })
+            curr_lec -= dur
+            p += 1
+            
+        # Lab
+        if lab_dur > 0:
+            tasks.append({
+                'uid': f"{c_code}_S{sec}_Lb", 'id': c_code, 'sec': sec, 'type': 'Lab',
+                'dur': lab_dur, 'std': row.get('enrollment_count', 30), 'teachers': teachers,
+                'is_online': (row.get('lab_online', 0) == 1),
+                'req_ai': (row.get('require_lab_ai', 0) == 1),
+                'req_net': (row.get('require_lab_network', 0) == 1)
+            })
 
-        # 1. Fixed Schedule
-        fixed_tasks = []
-        for key in ['ai_out', 'cy_out']:
-            if data_dict[key] is not None:
-                df_f = data_dict[key]
-                for _, r in df_f.iterrows():
-                    d_i = DAYS.index(str(r['day'])[:3]) if str(r['day'])[:3] in DAYS else -1
-                    s_i = time_to_slot_index(r['start'], SLOT_INV)
-                    dur = int(math.ceil((r.get('lecture_hour', 0) + r.get('lab_hour', 0)) * 2))
-                    if d_i != -1 and s_i != -1:
-                        fixed_tasks.append({
-                            'uid': f"FIX_{r['course_code']}_S{r['section']}_{r.get('room')}",
-                            'id': str(r['course_code']), 'sec': int(r['section']), 'dur': dur, 'type': 'Fixed',
-                            'tea': teacher_map.get(str(r['course_code']).strip(), ['-']),
-                            'fixed_room': True, 'target_room': str(r['room']), 'f_d': d_i, 'f_s': s_i
-                        })
+    # --- 2.3 Constraint Programming Model ---
+    model = cp_model.CpModel()
+    schedule = {}  # (uid, room, day, start_slot) -> BoolVar
+    is_scheduled = {} 
+    
+    # Variables & Constraints
+    for t in tasks:
+        uid = t['uid']
+        is_scheduled[uid] = model.NewBoolVar(f"sched_{uid}")
+        
+        # Filter Valid Rooms
+        valid_rooms = []
+        for r in room_list:
+            if t['is_online'] and r['room'] != 'Online': continue
+            if not t['is_online'] and r['room'] == 'Online': continue
+            if r['room'] != 'Online' and r['capacity'] < t['std']: continue
+            if t['type'] == 'Lab' and 'lab' not in str(r.get('type','')).lower(): continue
+            valid_rooms.append(r)
 
-        # 2. Dynamic Tasks
-        tasks = []
-        for _, row in df_courses.iterrows():
-            c, s = str(row['course_code']).strip(), int(row['section'])
-            tea, opt = teacher_map.get(c, ['Unknown']), row.get('optional', 1)
-            lec_slots = int(math.ceil(row['lecture_hour'] * 2))
-            p = 1
-            while lec_slots > 0:
-                dur = min(lec_slots, 6)
-                uid = f"{c}_S{s}_Lec_P{p}"
-                if not any(tk['uid'].startswith(f"FIX_{c}_S{s}") for tk in fixed_tasks):
-                    tasks.append({'uid': uid, 'id': c, 'sec': s, 'type': 'Lec', 'dur': dur, 'std': row['enrollment_count'], 'tea': tea, 'opt': opt, 'online': row.get('lec_online')==1})
-                lec_slots -= dur; p += 1
-            lab_dur = int(math.ceil(row['lab_hour'] * 2))
-            if lab_dur > 0:
-                uid = f"{c}_S{s}_Lab"
-                if not any(tk['uid'].startswith(f"FIX_{c}_S{s}") for tk in fixed_tasks):
-                    tasks.append({'uid': uid, 'id': c, 'sec': s, 'type': 'Lab', 'dur': lab_dur, 'std': row['enrollment_count'], 'tea': tea, 'opt': opt, 'online': row.get('lab_online')==1})
+        # Create Slot Vars
+        candidates = []
+        for r in valid_rooms:
+            for d in range(len(DAYS)): # 0-4
+                for s in range(TOTAL_SLOTS - t['dur'] + 1):
+                    # Time Constraints
+                    s_val = SLOT_MAP[s]['val']
+                    e_val = SLOT_MAP[s + t['dur'] - 1]['val'] + 0.5
+                    
+                    if config['MODE'] == 1: # Compact (09:00-16:00)
+                        if s_val < 9.0 or e_val > 16.0: continue
+                    
+                    # Lunch Avoidance
+                    overlap_lunch = False
+                    for k in range(t['dur']):
+                        if SLOT_MAP[s+k]['is_lunch']: overlap_lunch = True
+                    if overlap_lunch: continue
+                    
+                    # Variable Creation
+                    var = model.NewBoolVar(f"{uid}_{r['room']}_{d}_{s}")
+                    schedule[(uid, r['room'], d, s)] = var
+                    candidates.append(var)
+        
+        # Must be scheduled once
+        if candidates:
+            model.Add(sum(candidates) == 1).OnlyEnforceIf(is_scheduled[uid])
+            model.Add(sum(candidates) == 0).OnlyEnforceIf(is_scheduled[uid].Not())
+        else:
+            model.Add(is_scheduled[uid] == 0)
 
-        # 3. Solver Setup
-        model = cp_model.CpModel()
-        vars, is_sched, task_vars = {}, {}, {}
-        room_lookup = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-        tea_lookup = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-        obj_terms, pen_terms = [], []
-
-        for t in (fixed_tasks + tasks):
-            uid = t['uid']
-            is_sched[uid] = model.NewBoolVar(f"sc_{uid}")
-            t_d = model.NewIntVar(0, 4, f"d_{uid}"); t_s = model.NewIntVar(0, TOTAL_SLOTS-1, f"s_{uid}")
-            model.Add(model.NewIntVar(0, TOTAL_SLOTS+2, f"e_{uid}") == t_s + t['dur'])
-            task_vars[uid] = {'d': t_d, 's': t_s}
-            if t.get('fixed_room'):
-                model.Add(t_d == t['f_d']); model.Add(t_s == t['f_s'])
-
+    # Conflict: Room Overlap
+    for d in range(len(DAYS)):
+        for s in range(TOTAL_SLOTS):
             for r in room_list:
-                if t.get('online') and r['room'] != 'Online': continue
-                if not t.get('online') and (r['room'] == 'Online' or r['capacity'] < t.get('std', 0)): continue
-                if t.get('fixed_room') and r['room'] != t['target_room']: continue
-                if t.get('type') == 'Lab' and 'lab' not in str(r.get('type','')).lower(): continue
+                if r['room'] == 'Online': continue
+                # Find all tasks active at this time/room
+                active_vars = []
+                for t in tasks:
+                    for k in range(t['dur']):
+                        if s - k >= 0:
+                            key = (t['uid'], r['room'], d, s - k)
+                            if key in schedule: active_vars.append(schedule[key])
+                if active_vars:
+                    model.Add(sum(active_vars) <= 1)
 
-                for d in range(5):
-                    for s in range(TOTAL_SLOTS - t['dur']):
-                        sv = SLOT_MAP[s]['val']
-                        if mode == 1 and (sv < 9.0 or (sv + t['dur']*0.5) > 16.0): continue
-                        if any(SLOT_MAP[s+i]['is_lunch'] for i in range(t['dur'])): continue
-                        if any(tid in un_map and s+i in un_map[tid][d] for tid in t['tea'] for i in range(t['dur'])): continue
+    # Conflict: Teacher Overlap
+    all_teachers_set = set(tea for t in tasks for tea in t['teachers'])
+    for tea in all_teachers_set:
+        if tea == 'Unknown': continue
+        for d in range(len(DAYS)):
+            for s in range(TOTAL_SLOTS):
+                active_vars = []
+                for t in tasks:
+                    if tea in t['teachers']:
+                        for r in room_list:
+                            for k in range(t['dur']):
+                                if s - k >= 0:
+                                    key = (t['uid'], r['room'], d, s - k)
+                                    if key in schedule: active_vars.append(schedule[key])
+                if active_vars:
+                    model.Add(sum(active_vars) <= 1)
 
-                        v = model.NewBoolVar(f"{uid}_{r['room']}_{d}_{s}")
-                        vars[(uid, r['room'], d, s)] = v
-                        model.Add(t_d == d).OnlyEnforceIf(v); model.Add(t_s == s).OnlyEnforceIf(v)
-                        if mode == 2 and (sv < 9.0 or (sv + t['dur']*0.5) > 16.0): pen_terms.append(v * penalty_val)
-                        for i in range(t['dur']):
-                            room_lookup[r['room']][d][s+i].append(v)
-                            for tid in t['tea']: tea_lookup[tid][d][s+i].append(v)
+    # Objective: Maximize Scheduled Classes
+    model.Maximize(sum(is_scheduled.values()))
 
-            model.Add(sum(vars[k] for k in vars if k[0] == uid) == 1).OnlyEnforceIf(is_sched[uid])
-            obj_terms.append(is_sched[uid] * (1000000 if t.get('fixed_room') else (1000 if t.get('opt')==0 else 100)))
+    # Solve
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = config['TIMEOUT']
+    status = solver.Solve(model)
 
-        for lookup in [room_lookup, tea_lookup]:
-            for k in lookup:
-                for d in lookup[k]:
-                    for s in lookup[k][d]:
-                        if len(lookup[k][d][s]) > 1: model.Add(sum(lookup[k][d][s]) <= 1)
-
-        model.Maximize(sum(obj_terms) - sum(pen_terms))
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = solver_time
-        status = solver.Solve(model)
-
-        res_final = []
-        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            for t in (fixed_tasks + tasks):
-                uid = t['uid']
-                if solver.Value(is_sched[uid]):
-                    d, s = solver.Value(task_vars[uid]['d']), solver.Value(task_vars[uid]['s'])
-                    room_name = "Unknown"
-                    # Safe Python 3.13 loop
-                    for k, v in vars.items():
-                        if k[0] == uid and k[2] == d and k[3] == s and solver.Value(v):
-                            room_name = k[1]; break
-                    notes = (["Online"] if t.get('online') else []) + (["Ext.Time"] if SLOT_MAP[s]['val'] < 9.0 or (SLOT_MAP[s]['val'] + t['dur']*0.5) > 16.0 else [])
-                    res_final.append({'Day': DAYS[d], 'Start': SLOT_MAP[s]['time'], 'End': SLOT_MAP[s+t['dur']]['time'], 'Room': room_name, 'Course': t['id'], 'Sec': t['sec'], 'Type': t.get('type','-'), 'Teacher': ",".join(t['tea']), 'Note': ", ".join(notes)})
-            return pd.DataFrame(res_final)
-        return None
-    except Exception as e:
-        st.error(f"❌ Error Detail: {e}")
-        return None
+    results = []
+    if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        for t in tasks:
+            uid = t['uid']
+            if uid in is_scheduled and solver.Value(is_scheduled[uid]):
+                # Find where it was scheduled
+                for (tid, r, d, s), var in schedule.items():
+                    if tid == uid and solver.Value(var):
+                        start_time = SLOT_MAP[s]['time']
+                        end_slot_idx = s + t['dur']
+                        end_time = SLOT_MAP.get(end_slot_idx, {'time': '19:00'})['time']
+                        
+                        results.append({
+                            'Day': DAYS[d],
+                            'Start': start_time,
+                            'End': end_time,
+                            'StartVal': SLOT_MAP[s]['val'], # Numeric for sorting
+                            'Duration': t['dur'], # in slots (0.5 hr units)
+                            'Room': r,
+                            'Course': t['id'],
+                            'Sec': t['sec'],
+                            'Type': t['type'],
+                            'Teachers': ", ".join(t['teachers'])
+                        })
+                        break
+    return pd.DataFrame(results)
 
 # ==========================================
-# 4. Streamlit UI (พร้อมระบบ Fallback ค่าเดิม)
+# 🎨 3. Visualization Helper (HTML Timetable)
 # ==========================================
-st.sidebar.header("📂 1. อัปโหลดข้อมูล (7 ไฟล์)")
+def generate_html_timetable(df, title):
+    days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+    # Time headers: 08:00 to 19:00
+    times = list(range(8, 20)) 
+    
+    html = f"<h4 style='color:#333;'>📅 {title}</h4>"
+    html += "<div class='schedule-container'>"
+    
+    # Header Row
+    html += "<div></div>" # Top-left corner empty
+    for t in times[:-1]: # 8 to 18
+        html += f"<div class='header-cell' style='grid-column: span 1;'>{t:02d}:00</div>"
+    
+    # Rows for each Day
+    for day in days:
+        html += f"<div class='day-cell'>{day}</div>"
+        
+        # Filter tasks for this day
+        day_tasks = df[df['Day'] == day].copy()
+        
+        # Grid placement logic
+        # Grid starts at col 2 (col 1 is day label). 
+        # 08:00 is col 2. Each hour is 1 column width? 
+        # Better: Each hour is 2 slots. Let's simplify: Grid columns represent HOURS.
+        # If class starts 09:30, we need finer grid. 
+        # Let's make grid columns represent 30 mins.
+        # 08:00 -> 19:00 is 11 hours = 22 slots.
+        
+        # Re-adjusting CSS for 30-min slots might be too wide. 
+        # Let's use `left: %` and `width: %` relative to a container track instead of Grid for cells.
+        # But for stability, let's stick to the current Grid of 1-hour slots and use margins for half-hours.
+        
+        # Creating a relative container for the day's timeline
+        html += f"<div style='grid-column: 2 / span 11; position: relative; height: 60px; background: #fff; border-bottom: 1px solid #eee;'>"
+        
+        for _, row in day_tasks.iterrows():
+            # Calculate position
+            # Start 8.0 -> 0%
+            # End 19.0 -> 100%
+            # Total duration 11 hours
+            start_offset = row['StartVal'] - 8.0
+            duration_hr = row['Duration'] * 0.5
+            
+            left_pct = (start_offset / 11.0) * 100
+            width_pct = (duration_hr / 11.0) * 100
+            
+            color_class = f"type-{row['Type']}"
+            
+            html += f"""
+            <div class='class-card {color_class}' style='
+                position: absolute; 
+                left: {left_pct}%; 
+                width: {width_pct}%; 
+                top: 2px; bottom: 2px;
+                font-size: 11px;
+                overflow: hidden;
+                z-index: 5;
+            ' title='{row['Course']} ({row['Type']}) - {row['Room']}'>
+                <b>{row['Course']}</b> ({row['Type']})<br>
+                {row['Room']}
+            </div>
+            """
+        html += "</div>"
+    
+    html += "</div>"
+    return html
 
-def load_data_file(file_key, default_name):
-    up = st.sidebar.file_uploader(f"Upload {default_name}", type="csv")
-    if up: return pd.read_csv(up)
-    # Fallback ระบบตรวจสอบไฟล์ต้นฉบับในเครื่อง
-    if os.path.exists(default_name): return pd.read_csv(default_name)
-    return None
+# ==========================================
+# 🚀 Main Application Flow
+# ==========================================
 
-df_dict = {
-    'room': load_data_file('room', 'room.csv'),
-    'teacher_courses': load_data_file('teacher_courses', 'teacher_courses.csv'),
-    'ai_in': load_data_file('ai_in', 'ai_in_courses.csv'),
-    'cy_in': load_data_file('cy_in', 'cy_in_courses.csv'),
-    'all_teachers': load_data_file('all_teachers', 'all_teachers.csv'),
-    'ai_out': load_data_file('ai_out', 'ai_out_courses.csv'),
-    'cy_out': load_data_file('cy_out', 'cy_out_courses.csv'),
-}
+# Tabs Structure
+tab1, tab2, tab3 = st.tabs(["1️⃣ Upload Data", "2️⃣ Settings & Run", "3️⃣ Results"])
 
-st.sidebar.divider()
-st.sidebar.header("⚙️ 2. ตั้งค่า Solver")
-mode_sel = st.sidebar.radio("โหมด:", [1, 2], format_func=lambda x: "Compact (09-16)" if x==1 else "Flexible (08:30-19)")
-solver_t = st.sidebar.slider("เวลาคำนวณสูงสุด (วินาที):", 10, 600, 120) # ข้อ 3
-penalty_v = st.sidebar.slider("คะแนนบทลงโทษ (Penalty):", 0, 100, 10) # ข้อ 3
+with tab1:
+    data_store = render_data_upload_section()
 
-if st.button("🚀 Run Automatic Scheduler", use_container_width=True):
-    # ตรวจสอบไฟล์บังคับ 5 ไฟล์
-    mandatory = ['room', 'teacher_courses', 'ai_in', 'cy_in', 'all_teachers']
-    if any(df_dict[k] is None for k in mandatory):
-        st.error("❌ กรุณาอัปโหลดไฟล์บังคับ 5 ไฟล์แรก หรือตรวจสอบว่ามีไฟล์เริ่มต้นอยู่ในโฟลเดอร์")
+with tab2:
+    st.header("⚙️ Configuration")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        mode = st.radio("Schedule Mode", [1, 2], 
+                        format_func=lambda x: "Compact (09:00-16:00)" if x==1 else "Flexible (08:30-19:00)")
+    with c2:
+        timeout = st.slider("Max Calculation Time (seconds)", 10, 600, 60)
+    
+    st.divider()
+    
+    if st.button("🚀 Generate Schedule", type="primary"):
+        if data_store:
+            with st.spinner("🤖 AI is scheduling courses..."):
+                config = {'MODE': mode, 'TIMEOUT': timeout}
+                df_results = run_solver(data_store, config)
+                
+                if not df_results.empty:
+                    st.session_state['schedule'] = df_results
+                    st.success("✅ Schedule Generated Successfully! Go to the Results tab.")
+                else:
+                    st.error("❌ Could not find a feasible schedule. Try increasing time limits or relaxing constraints.")
+        else:
+            st.error("Please upload data in Tab 1 first.")
+
+with tab3:
+    if 'schedule' in st.session_state and not st.session_state['schedule'].empty:
+        df = st.session_state['schedule']
+        
+        # Control Bar
+        col_view, col_select = st.columns([1, 2])
+        
+        with col_view:
+            view_type = st.radio("View Mode:", ["Room View", "Teacher View"], horizontal=True)
+            
+        with col_select:
+            if view_type == "Room View":
+                options = sorted(df['Room'].unique())
+                selected = st.selectbox("Select Room:", options)
+                df_filtered = df[df['Room'] == selected]
+            else:
+                # Extract unique teachers
+                all_t = set()
+                for t_str in df['Teachers']:
+                    for t in t_str.split(','): all_t.add(t.strip())
+                options = sorted(list(all_t))
+                selected = st.selectbox("Select Teacher:", options)
+                df_filtered = df[df['Teachers'].str.contains(selected, regex=False)]
+
+        st.divider()
+        
+        # Render HTML Timetable
+        html_view = generate_html_timetable(df_filtered, f"{view_type}: {selected}")
+        st.markdown(html_view, unsafe_allow_html=True)
+        
+        st.divider()
+        st.subheader("📋 Raw Data")
+        st.dataframe(df_filtered, use_container_width=True)
+        
     else:
-        with st.status("🤖 กำลังจัดตารางที่ดีที่สุด...", expanded=True) as status:
-            df_res = calculate_schedule(df_dict, mode_sel, solver_t, penalty_v)
-            if df_res is not None and not df_res.empty:
-                st.session_state['res_df'] = df_res
-                st.session_state['run_done'] = True
-                status.update(label="✅ จัดตารางสำเร็จ!", state="complete")
-            else: st.error("❌ ไม่สามารถหาคำตอบได้ (ลองเพิ่มเวลา Solver หรือลด Penalty)")
-
-# ==========================================
-# 5. Visualization (มุมมองห้อง และ มุมมองอาจารย์)
-# ==========================================
-if st.session_state.get('run_done'):
-    df_res = st.session_state['res_df']
-    
-    # ข้อ 2: มุมมองตารางสอนอาจารย์
-    view_mode = st.radio("เลือกมุมมอง:", ["รายห้อง (Room View)", "รายอาจารย์ (Teacher View)"], horizontal=True)
-    
-    if view_mode == "รายห้อง (Room View)":
-        target = st.selectbox("เลือกห้อง:", sorted(df_res['Room'].unique()))
-        filt_df = df_res[df_res['Room'] == target]
-    else:
-        all_t = sorted(list(set([i.strip() for s in df_res['Teacher'] for i in str(s).split(',') if i.strip() != '-'])))
-        target = st.selectbox("เลือกรายชื่ออาจารย์:", all_t)
-        filt_df = df_res[df_res['Teacher'].str.contains(target, na=False)]
-
-    # HTML Timetable Generator
-    days_map = {'Mon': 'จันทร์', 'Tue': 'อังคาร', 'Wed': 'พุธ', 'Thu': 'พฤหัสบดี', 'Fri': 'ศุกร์'}
-    time_headers = [f"{h:02d}:{m:02d}" for h in range(8, 19) for m in [0, 30]][1:]
-    
-    html = f"<div class='tt-container'><table class='tt-table'><tr class='tt-header'><th>Day</th>"
-    for t in time_headers: html += f"<th>{t}</th>"
-    html += "</tr>"
-
-    for d_en in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']:
-        html += f"<tr><td class='tt-day'>{days_map[d_en]}</td>"
-        d_data = filt_df[filt_df['Day'] == d_en]
-        curr = 8.5
-        while curr < 19.0:
-            t_str = f"{int(curr):02d}:{round((curr%1)*60):02d}"
-            match = d_data[d_data['Start'] == t_str]
-            if not match.empty:
-                row = match.iloc[0]
-                sh, sm = map(int, row['Start'].split(':')); eh, em = map(int, row['End'].split(':'))
-                span = int(((eh + em/60) - (sh + sm/60)) * 2)
-                html += f"<td colspan='{span}'><div class='class-box'><span class='c-code'>{row['Course']}</span><span>(S{row['Sec']}) {row['Type']}</span><span>{row['Teacher']}</span>"
-                if "Ext.Time" in str(row['Note']): html += f"<span style='color:red; font-size:9px'>Ext.Time</span>"
-                html += "</div></td>"; curr += (span * 0.5)
-            else: html += "<td></td>"; curr += 0.5
-        html += "</tr>"
-    st.markdown(html + "</table></div>", unsafe_allow_html=True)
-    st.download_button("📥 Download CSV", df_res.to_csv(index=False).encode('utf-8'), "schedule.csv", "text/csv")
+        st.info("👈 Please run the scheduler in Tab 2 first.")
