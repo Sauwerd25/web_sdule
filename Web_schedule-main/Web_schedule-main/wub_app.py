@@ -93,6 +93,10 @@ SCHEDULE_MODE = st.radio(
     format_func=lambda x: schedule_mode_desc[x]
 )
 
+lunch_time = st.sidebar.slider(
+    "Lunch Break Interval:",
+    min_value=11.0, max_value=14.0, value=(12.0, 13.0), step=0.ๅ
+)
 
 solver_limit = st.slider(
     "Max Calculation Time (seconds)", 
@@ -102,6 +106,8 @@ solver_limit = st.slider(
 # รวบรวมค่า Config
 config_params = {
     'SOLVER_TIME': solver_limit,
+    'LUNCH_START': lunch_time[0],
+    'LUNCH_END': lunch_time[1],
     'MODE': SCHEDULE_MODE
 }
 
