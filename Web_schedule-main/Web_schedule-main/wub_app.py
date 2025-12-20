@@ -12,20 +12,7 @@ st.title("🎓 Automatic Course Scheduler")
 # ==========================================
 # 1. User Config (UI Side)
 # ==========================================
-schedule_mode_desc = {
-    1: "Compact Mode (09:00 - 16:00)",
-    2: "Flexible Mode (08:30 - 19:00)"
-}
-SCHEDULE_MODE = st.radio(
-    "Select Scheduling Mode:",
-    options=[1, 2],
-    format_func=lambda x: schedule_mode_desc[x]
-)
-
-st.write(f"**Current Mode:** {schedule_mode_desc[SCHEDULE_MODE]}")
-
 # ปุ่มกดเพื่อเริ่มการจัดตาราง
-run_button = st.button("🚀 Run Scheduler")
 st.header("⚙️Scheduler Settings")
 
 # ตั้งค่าเวลาให้ AI คิด (Solver Time)
@@ -38,6 +25,20 @@ solver_limit = st.slider(
 config_params = {
     'SOLVER_TIME': solver_limit
 }
+
+schedule_mode_desc = {
+    1: "Compact Mode (09:00 - 16:00)",
+    2: "Flexible Mode (08:30 - 19:00)"
+}
+SCHEDULE_MODE = st.radio(
+    "Select Scheduling Mode:",
+    options=[1, 2],
+    format_func=lambda x: schedule_mode_desc[x]
+)
+
+st.write(f"**Current Mode:** {schedule_mode_desc[SCHEDULE_MODE]}")
+
+run_button = st.button("🚀 Run Scheduler")
 # ==========================================
 # ฟังก์ชันคำนวณ (คืนค่า DataFrame แทนการแสดงผลทันที)
 # ==========================================
