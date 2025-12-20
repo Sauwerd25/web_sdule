@@ -179,6 +179,8 @@ def calculate_schedule(data_store, config):
         return unavailable_slots_by_day
 
     # --- Data Unpacking (ดึงข้อมูลจากตัวแปรที่รับมา) ---
+    progress_text = "Operation in progress. Please wait."
+    my_bar = st.progress(0, text=progress_text)
     df_room = data_store['df_room']
     df_teacher_courses = data_store['df_teacher_courses']
     df_ai_in = data_store['df_ai_in']
@@ -196,8 +198,6 @@ def calculate_schedule(data_store, config):
     df_cy_in.columns = df_cy_in.columns.str.strip()
     
     # Progress Bar UI
-    progress_text = "Operation in progress. Please wait."
-    my_bar = st.progress(0, text=progress_text)
     my_bar.progress(10, text="Cleaning Data...")
 
     df_courses = pd.concat([df_ai_in, df_cy_in], ignore_index=True)
