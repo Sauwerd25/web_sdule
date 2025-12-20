@@ -26,7 +26,6 @@ st.write(f"**Current Mode:** {schedule_mode_desc[SCHEDULE_MODE]}")
 
 # ปุ่มกดเพื่อเริ่มการจัดตาราง
 run_button = st.button("🚀 Run Scheduler")
-st.sidebar.divider()
 st.header("⚙️Scheduler Settings")
 
 # ตั้งค่าเวลาให้ AI คิด (Solver Time)
