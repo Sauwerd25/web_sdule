@@ -11,10 +11,10 @@ st.title("🎓 Automatic Course Scheduler (Pro Version)")
 # ==========================================
 # 📂 ส่วนที่ 1: Sidebar - Upload & Config
 # ==========================================
-st.sidebar.header("📂 1. Upload Data Files")
+st.header("📂 1. Upload Data Files")
 
 # 1.1 File Uploader: ให้ผู้ใช้เลือกไฟล์ CSV เอง
-uploaded_files = st.sidebar.file_uploader(
+uploaded_files = st.file_uploader(
     "Upload CSV files (room, teacher, courses, etc.)", 
     accept_multiple_files=True, 
     type=['csv']
@@ -43,8 +43,8 @@ if uploaded_files:
     else:
         st.sidebar.warning(f"⚠️ Missing files ({uploaded_count}/7). Please upload all required CSVs.")
 
-st.sidebar.divider()
-st.sidebar.header("⚙️ 2. Settings")
+
+st.header("⚙️ 2. Settings")
 
 # 1.2 Configuration: ตั้งค่าพารามิเตอร์
 schedule_mode_desc = {
@@ -57,26 +57,19 @@ SCHEDULE_MODE = st.sidebar.radio(
     format_func=lambda x: schedule_mode_desc[x]
 )
 
-# ตั้งค่าเวลาพักเที่ยง (Slider แบบช่วง)
-lunch_time = st.sidebar.slider(
-    "Lunch Break Interval:",
-    min_value=11.0, max_value=14.0, value=(12.0, 13.0), step=0.5
-)
 
-solver_limit = st.sidebar.slider(
+solver_limit = st.slider(
     "Max Calculation Time (seconds)", 
-    min_value=10, max_value=600, value=60
+    min_value=10, max_value=600, value=120
 )
 
 # รวบรวมค่า Config
 config_params = {
     'SOLVER_TIME': solver_limit,
-    'LUNCH_START': lunch_time[0],
-    'LUNCH_END': lunch_time[1],
     'MODE': SCHEDULE_MODE
 }
 
-run_button = st.sidebar.button("🚀 Run Scheduler", type="primary")
+run_button = st.button("🚀 Run Scheduler", type="primary")
 
 # ==========================================
 # 🧠 ส่วนที่ 2: ฟังก์ชันคำนวณ (Calculation Core)
