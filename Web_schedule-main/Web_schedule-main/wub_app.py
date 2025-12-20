@@ -95,7 +95,7 @@ SCHEDULE_MODE = st.radio(
 
 lunch_time = st.sidebar.slider(
     "Lunch Break Interval:",
-    min_value=11.0, max_value=14.0, value=(12.0, 13.0), step=0.ๅ
+    min_value=11.0, max_value=14.0, value=(12.0, 13.0), step=0.1
 )
 
 solver_limit = st.slider(
