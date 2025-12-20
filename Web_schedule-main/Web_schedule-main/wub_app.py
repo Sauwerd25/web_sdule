@@ -31,7 +31,7 @@ st.header("⚙️Scheduler Settings")
 
 # ตั้งค่าเวลาให้ AI คิด (Solver Time)
 solver_limit = st.slider(
-    "Max Calculation Time (seconds)", 
+    "Max Calculation Time (120 seconds)", 
     min_value=1, max_value=1200, value=120
 )
 
