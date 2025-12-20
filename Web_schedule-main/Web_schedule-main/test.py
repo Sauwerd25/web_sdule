@@ -61,51 +61,63 @@ st.markdown("""
 st.title("🎓 Automatic Course Scheduler (Refactored)")
 
 # ==========================================
-# 📂 1. Data Management Section
+# 📂 1. Data Management Section (Updated with Defaults)
 # ==========================================
 def render_data_upload_section():
-    st.info("📂 **Step 1: Data Preparation** | Please upload the required CSV files below.")
+    st.info("📂 **Step 1: Data Preparation** | Upload CSV files or leave empty to use default data.")
     
-    # สร้าง Dictionary เพื่อเก็บไฟล์ที่อัปโหลด
     uploaded_data = {}
     
-    # รายชื่อไฟล์ที่ต้องการ (Label, Key Map)
+    # จับคู่ Key กับชื่อไฟล์ Default ที่อยู่ในโฟลเดอร์
+    # ⚠️ ตรวจสอบ Path: Web_schedule-main/Web_schedule-main/ ให้ตรงกับเครื่องคุณ
+    BASE_PATH = "Web_schedule-main/Web_schedule-main/"
+    
     file_configs = [
-        ("1. Room Data (room.csv)", "df_room"),
-        ("2. Teachers List (all_teachers.csv)", "all_teacher"),
-        ("3. Teacher Courses (teacher_courses.csv)", "df_teacher_courses"),
-        ("4. AI Courses IN (ai_in.csv)", "df_ai_in"),
-        ("5. Cyber Courses IN (cy_in.csv)", "df_cy_in"),
-        ("6. AI Courses OUT (ai_out.csv)", "df_ai_out"),
-        ("7. Cyber Courses OUT (cy_out.csv)", "df_cy_out"),
+        ("1. Room Data", "df_room", "room.csv"),
+        ("2. Teachers List", "all_teacher", "all_teachers.csv"),
+        ("3. Teacher Courses", "df_teacher_courses", "teacher_courses.csv"),
+        ("4. AI Courses IN", "df_ai_in", "ai_in_courses.csv"),
+        ("5. Cyber Courses IN", "df_cy_in", "cy_in_courses.csv"),
+        ("6. AI Courses OUT", "df_ai_out", "ai_out_courses.csv"),
+        ("7. Cyber Courses OUT", "df_cy_out", "cy_out_courses.csv"),
     ]
 
-    # จัดวาง Layout แบบ Grid (4 แถว 2 คอลัมน์)
-    cols = st.columns(2)
-    for i, (label, key) in enumerate(file_configs):
-        with cols[i % 2]:
-            file = st.file_uploader(label, type=['csv'], key=key)
-            if file:
-                uploaded_data[key] = pd.read_csv(file)
-            else:
-                # Default Logic (ถ้าไม่อัปโหลด ให้ลองหาไฟล์ Default)
-                try:
-                    # ⚠️ แก้ Path ตรงนี้ให้ตรงกับโฟลเดอร์จริงของคุณ
-                    default_path = f"Web_schedule-main/Web_schedule-main/{label.split('(')[1].replace(')', '')}"
-                    # uploaded_data[key] = pd.read_csv(default_path) # Uncomment บรรทัดนี้ถ้าจะใช้ Default
-                    pass
-                except:
-                    pass
+    # ใช้ Expander เพื่อซ่อนช่องอัปโหลดไม่ให้รก (ถ้าจะใช้ Default เป็นหลัก)
+    with st.expander("📂 Click to upload custom CSV files (Optional)", expanded=True):
+        cols = st.columns(2)
+        for i, (label, key, filename) in enumerate(file_configs):
+            with cols[i % 2]:
+                file = st.file_uploader(f"{label} ({filename})", type=['csv'], key=key)
+                
+                if file:
+                    # กรณีผู้ใช้อัปโหลดไฟล์เอง
+                    try:
+                        uploaded_data[key] = pd.read_csv(file)
+                    except Exception as e:
+                        st.error(f"❌ Error reading {filename}: {e}")
+                else:
+                    # กรณีไม่อัปโหลด -> ให้โหลด Default
+                    try:
+                        full_path = f"{BASE_PATH}{filename}"
+                        # ใช้วิธีโหลดแบบนี้ (ถ้าไฟล์อยู่บน Server/Local)
+                        # หากรันบน Cloud อาจต้องปรับ Path ให้ถูกต้อง
+                        uploaded_data[key] = pd.read_csv(full_path)
+                    except FileNotFoundError:
+                        # สร้าง Dummy data ว่างๆ ป้องกัน Error ถ้าหาไฟล์ไม่เจอจริงๆ
+                        st.warning(f"⚠️ Default file not found: {filename}")
+                        uploaded_data[key] = pd.DataFrame()
+                    except Exception as e:
+                        st.error(f"❌ Error loading default {filename}: {e}")
+
+    # เช็คสรุปผลการโหลด
+    loaded_count = sum(1 for k in uploaded_data if not uploaded_data[k].empty)
     
-    # ตรวจสอบว่าครบไหม
-    missing = [k for _, k in file_configs if k not in uploaded_data]
-    
-    if not missing:
-        st.success(f"✅ All {len(uploaded_data)} datasets loaded successfully!")
+    if loaded_count == 7:
+        st.success(f"✅ Ready! Loaded {loaded_count} datasets (Custom + Defaults).")
         return uploaded_data
     else:
-        st.warning(f"⚠️ Missing files: {len(missing)} files. Please upload to proceed.")
-        return None
+        st.warning(f"⚠️ Loaded {loaded_count}/7 files. Some data might be missing.")
+        return uploaded_data
 
 # ==========================================
 # 🧠 2. Solver Logic (Core)
