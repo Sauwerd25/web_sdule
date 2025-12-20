@@ -27,12 +27,12 @@ st.write(f"**Current Mode:** {schedule_mode_desc[SCHEDULE_MODE]}")
 # ปุ่มกดเพื่อเริ่มการจัดตาราง
 run_button = st.button("🚀 Run Scheduler")
 st.sidebar.divider()
-st.header("⚙️ 2. Scheduler Settings")
+st.header("⚙️Scheduler Settings")
 
 # ตั้งค่าเวลาให้ AI คิด (Solver Time)
-solver_limit = st.number_input(
-    "Max Calculation Time (seconds):", 
-    min_value=10, max_value=600, value=120
+solver_limit = st.slider(
+    "Max Calculation Time (seconds)", 
+    min_value=1, max_value=1200, value=120
 )
 
 # เก็บเป็น Dictionary เพื่อส่งเข้าฟังก์ชัน
