@@ -3,51 +3,96 @@ import pandas as pd
 from ortools.sat.python import cp_model
 import math
 import re
-import io
 
 # ตั้งค่าหน้าเว็บ
-st.set_page_config(page_title="Automatic Scheduler", layout="wide")
-st.title("🎓 Automatic Course Scheduler")
+st.set_page_config(page_title="Automatic Scheduler Pro", layout="wide", page_icon="🎓")
+st.title("🎓 Automatic Course Scheduler (Pro Version)")
 
 # ==========================================
-# 1. User Config (UI Side)
+# 📂 ส่วนที่ 1: Sidebar - Upload & Config
 # ==========================================
-# ปุ่มกดเพื่อเริ่มการจัดตาราง
-st.header("⚙️Scheduler Settings")
+st.sidebar.header("📂 1. Upload Data Files")
 
+# 1.1 File Uploader: ให้ผู้ใช้เลือกไฟล์ CSV เอง
+uploaded_files = st.sidebar.file_uploader(
+    "Upload CSV files (room, teacher, courses, etc.)", 
+    accept_multiple_files=True, 
+    type=['csv']
+)
+
+# ตัวแปรเก็บข้อมูล (Data Store)
+data_store = {}
+required_keys = ['df_room', 'df_teacher_courses', 'df_ai_in', 'df_cy_in', 'all_teacher', 'df_ai_out', 'df_cy_out']
+
+# Logic การจับคู่ไฟล์ที่อัปโหลดเข้าตัวแปร
+if uploaded_files:
+    for file in uploaded_files:
+        fname = file.name.lower()
+        if 'room' in fname: data_store['df_room'] = pd.read_csv(file)
+        elif 'teacher_courses' in fname: data_store['df_teacher_courses'] = pd.read_csv(file)
+        elif 'ai_in' in fname: data_store['df_ai_in'] = pd.read_csv(file)
+        elif 'cy_in' in fname: data_store['df_cy_in'] = pd.read_csv(file)
+        elif 'all_teachers' in fname: data_store['all_teacher'] = pd.read_csv(file)
+        elif 'ai_out' in fname: data_store['df_ai_out'] = pd.read_csv(file)
+        elif 'cy_out' in fname: data_store['df_cy_out'] = pd.read_csv(file)
+    
+    # เช็คว่าไฟล์ครบไหม
+    uploaded_count = len(data_store)
+    if uploaded_count == 7:
+        st.sidebar.success(f"✅ All files uploaded ({uploaded_count}/7)")
+    else:
+        st.sidebar.warning(f"⚠️ Missing files ({uploaded_count}/7). Please upload all required CSVs.")
+
+st.sidebar.divider()
+st.sidebar.header("⚙️ 2. Settings")
+
+# 1.2 Configuration: ตั้งค่าพารามิเตอร์
 schedule_mode_desc = {
     1: "Compact Mode (09:00 - 16:00)",
     2: "Flexible Mode (08:30 - 19:00)"
 }
-SCHEDULE_MODE = st.radio(
-    "Select Scheduling Mode:",
+SCHEDULE_MODE = st.sidebar.radio(
+    "Scheduling Mode:",
     options=[1, 2],
     format_func=lambda x: schedule_mode_desc[x]
 )
-# ตั้งค่าเวลาให้ AI คิด (Solver Time)
-solver_limit = st.slider(
-    "Max Calculation Time (120 seconds)", 
-    min_value=1, max_value=1200, value=120
+
+# ตั้งค่าเวลาพักเที่ยง (Slider แบบช่วง)
+lunch_time = st.sidebar.slider(
+    "Lunch Break Interval:",
+    min_value=11.0, max_value=14.0, value=(12.0, 13.0), step=0.5
 )
 
-# เก็บเป็น Dictionary เพื่อส่งเข้าฟังก์ชัน
+solver_limit = st.sidebar.slider(
+    "Max Calculation Time (seconds)", 
+    min_value=10, max_value=600, value=60
+)
+
+# รวบรวมค่า Config
 config_params = {
-    'SOLVER_TIME': solver_limit
+    'SOLVER_TIME': solver_limit,
+    'LUNCH_START': lunch_time[0],
+    'LUNCH_END': lunch_time[1],
+    'MODE': SCHEDULE_MODE
 }
 
-st.write(f"**Current Mode:** {schedule_mode_desc[SCHEDULE_MODE]}")
+run_button = st.sidebar.button("🚀 Run Scheduler", type="primary")
 
-run_button = st.button("🚀 Run Scheduler")
 # ==========================================
-# ฟังก์ชันคำนวณ (คืนค่า DataFrame แทนการแสดงผลทันที)
+# 🧠 ส่วนที่ 2: ฟังก์ชันคำนวณ (Calculation Core)
 # ==========================================
-def calculate_schedule():
-    # --- Time Slot Setup ---
+def calculate_schedule(data_store, config):
+    # ตรวจสอบว่าไฟล์ครบหรือไม่
+    if len(data_store) < 7:
+        st.error("❌ Missing required CSV files. Please upload them in the sidebar.")
+        return None, None
+
+    # --- Time Slot Setup (ใช้ค่าจาก Config) ---
     SLOT_MAP = {}
     t_start = 8.5
     idx = 0
-    LUNCH_START = 12.5
-    LUNCH_END = 13.0
+    LUNCH_START = config['LUNCH_START']
+    LUNCH_END = config['LUNCH_END']
 
     while t_start < 19.0:
         hour = int(t_start)
@@ -105,29 +150,28 @@ def calculate_schedule():
                 unavailable_slots_by_day[day_idx].add(slot)
         return unavailable_slots_by_day
 
-    # --- Data Loading ---
-    try:
-        df_room = pd.read_csv('Web_schedule-main/Web_schedule-main/room.csv')
-        df_teacher_courses = pd.read_csv('Web_schedule-main/Web_schedule-main/teacher_courses.csv')
-        df_ai_in = pd.read_csv('Web_schedule-main/Web_schedule-main/ai_in_courses.csv')
-        df_cy_in = pd.read_csv('Web_schedule-main/Web_schedule-main/cy_in_courses.csv')
-        all_teacher = pd.read_csv('Web_schedule-main/Web_schedule-main/all_teachers.csv')
-        
-        df_ai_out = pd.read_csv('Web_schedule-main/Web_schedule-main/ai_out_courses.csv')
-        df_cy_out = pd.read_csv('Web_schedule-main/Web_schedule-main/cy_out_courses.csv')
-        
-        room_list = df_room.to_dict('records')
-        room_list.append({'room': 'Online', 'capacity': 9999, 'type': 'virtual'})
-    except FileNotFoundError as e:
-        st.error(f"❌ Error: Missing CSV file. Details: {e}")
-        return None, None
+    # --- Data Unpacking (ดึงข้อมูลจากตัวแปรที่รับมา) ---
+    df_room = data_store['df_room']
+    df_teacher_courses = data_store['df_teacher_courses']
+    df_ai_in = data_store['df_ai_in']
+    df_cy_in = data_store['df_cy_in']
+    all_teacher = data_store['all_teacher']
+    df_ai_out = data_store['df_ai_out']
+    df_cy_out = data_store['df_cy_out']
+    
+    room_list = df_room.to_dict('records')
+    room_list.append({'room': 'Online', 'capacity': 9999, 'type': 'virtual'})
 
     # --- Data Cleaning & Prep ---
     df_teacher_courses.columns = df_teacher_courses.columns.str.strip()
     df_ai_in.columns = df_ai_in.columns.str.strip()
     df_cy_in.columns = df_cy_in.columns.str.strip()
-    progress_bar = st.progress(0)
-    progress_bar.progress(10)
+    
+    # Progress Bar UI
+    progress_text = "Operation in progress. Please wait."
+    my_bar = st.progress(0, text=progress_text)
+    my_bar.progress(10, text="Cleaning Data...")
+
     df_courses = pd.concat([df_ai_in, df_cy_in], ignore_index=True)
     if 'lec_online' not in df_courses.columns: df_courses['lec_online'] = 0
     if 'lab_online' not in df_courses.columns: df_courses['lab_online'] = 0
@@ -145,17 +189,17 @@ def calculate_schedule():
 
     # Teacher Unavailability
     all_teacher['teacher_id'] = all_teacher['teacher_id'].astype(str).str.strip()
-    all_teacher['unavailable_times'] = all_teacher['teacher_id'].apply(lambda x: None)
+    all_teacher['unavailable_times'] = all_teacher['teacher_id'].apply(lambda x: None) # Reset or use logic if exists
     
     TEACHER_UNAVAILABLE_SLOTS = {}
-    for index, row in all_teacher.iterrows():
-        parsed = parse_unavailable_time(row['unavailable_times'])
-        TEACHER_UNAVAILABLE_SLOTS[row['teacher_id']] = parsed
+    if 'unavailable_times' in all_teacher.columns:
+        for index, row in all_teacher.iterrows():
+            parsed = parse_unavailable_time(row['unavailable_times'])
+            TEACHER_UNAVAILABLE_SLOTS[row['teacher_id']] = parsed
 
     # Fixed Schedule Logic
-    FIXED_FILE_NAMES = ['ai_out_courses.csv', 'cy_out_courses.csv']
     fixed_schedule = []
-    for file_name, df_fixed in zip(FIXED_FILE_NAMES, [df_ai_out, df_cy_out]):
+    for df_fixed in [df_ai_out, df_cy_out]:
         for index, row in df_fixed.iterrows():
              try:
                 day_str = str(row['day']).strip()[:3]
@@ -226,6 +270,7 @@ def calculate_schedule():
                 })
 
     # --- Solver ---
+    my_bar.progress(30, text="Building Model...")
     model = cp_model.CpModel()
     schedule = {}
     is_scheduled = {}
@@ -236,8 +281,6 @@ def calculate_schedule():
     SCORE_FIXED = 1000000
     SCORE_CORE_COURSE = 1000
     SCORE_ELECTIVE_COURSE = 100
-    progress_bar.progress(25)
-    st.info(f"Processing {len(tasks)} tasks...")
 
     for t in tasks:
         uid = t['uid']
@@ -264,18 +307,20 @@ def calculate_schedule():
                     s_val = SLOT_MAP[s_idx]['val']
                     e_val = s_val + (t['dur'] * 0.5)
 
-                    if SCHEDULE_MODE == 1:
+                    # Mode Check
+                    if config['MODE'] == 1:
                         if s_val < 9.0 or e_val > 16.0: continue
                     else:
                         if s_idx + t['dur'] > TOTAL_SLOTS: continue
-                        if s_val < 9.0 or e_val > 16.0: pass
 
+                    # Lunch Check
                     overlaps_lunch = False
                     for i in range(t['dur']):
                         if SLOT_MAP.get(s_idx + i, {}).get('is_lunch', False):
                             overlaps_lunch = True; break
                     if overlaps_lunch: continue
 
+                    # Teacher Conflict
                     teacher_conflict = False
                     for teacher_id in t['teachers']:
                         if teacher_id in ['External_Faculty', 'Unknown']: continue
@@ -291,7 +336,7 @@ def calculate_schedule():
                     model.Add(t_day == d_idx).OnlyEnforceIf(var)
                     model.Add(t_start == s_idx).OnlyEnforceIf(var)
 
-                    if SCHEDULE_MODE == 2 and (s_val < 9.0 or e_val > 16.0):
+                    if config['MODE'] == 2 and (s_val < 9.0 or e_val > 16.0):
                         penalty_vars.append(var)
 
         if not candidates:
@@ -332,10 +377,12 @@ def calculate_schedule():
     model.Maximize(sum(objective_terms) - sum(penalty_vars))
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 4
-    solver.parameters.max_time_in_seconds = 120
-    progress_bar.progress(50)
+    solver.parameters.max_time_in_seconds = config['SOLVER_TIME']
+    
+    my_bar.progress(60, text="Solving... (This may take a while)")
     status = solver.Solve(model)
-    progress_bar.progress(100)
+    my_bar.progress(100, text="Done!")
+    my_bar.empty()
 
     if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
         results = []
@@ -376,24 +423,22 @@ def calculate_schedule():
         return None, None
 
 # ==========================================
-# ส่วนควบคุมหลัก (Controller)
+# 📊 ส่วนที่ 3: ส่วนควบคุมและแสดงผล (Controller & View)
 # ==========================================
 
-# 1. เมื่อกดปุ่ม Run -> คำนวณและเก็บลง Session State
+# ปุ่ม Run ทำงาน
 if run_button:
-    with st.spinner("Calculating schedule... please wait"):
-        res_list, un_list = calculate_schedule()
-        
-        if res_list is not None:
-            # เก็บข้อมูลลง session_state
-            st.session_state['schedule_results'] = pd.DataFrame(res_list)
-            st.session_state['unscheduled_results'] = un_list if un_list else []
-            st.session_state['has_run'] = True
-            st.success("✅ Schedule calculation complete!")
-        else:
-            st.error("❌ Cannot schedule in current mode (Constraints too strict).")
+    res_list, un_list = calculate_schedule(data_store, config_params)
+    
+    if res_list is not None:
+        st.session_state['schedule_results'] = pd.DataFrame(res_list)
+        st.session_state['unscheduled_results'] = un_list if un_list else []
+        st.session_state['has_run'] = True
+        st.toast("Calculation Complete!", icon="✅")
+    else:
+        st.error("❌ Cannot schedule in current mode or files missing.")
 
-# 2. ส่วนแสดงผล (ทำงานเมื่อมีข้อมูลใน Session State)
+# ส่วนแสดงผล
 if st.session_state.get('has_run', False):
     df_res = st.session_state['schedule_results']
     unscheduled = st.session_state['unscheduled_results']
@@ -406,80 +451,92 @@ if st.session_state.get('has_run', False):
         df_res['DayIdx'] = df_res['Day'].map(day_order)
         df_res = df_res.sort_values(by=['DayIdx', 'Start'])
 
+        # --- 3.1 Dashboard Summary (สรุปผล) ---
         st.divider()
-        st.header("🏫 Room Schedules (ตารางเรียนรายห้อง)")
+        st.markdown("### 📊 Scheduling Summary")
+        total_tasks = len(df_res) + len(unscheduled)
+        success_rate = (len(df_res) / total_tasks) * 100 if total_tasks > 0 else 0
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Classes", total_tasks)
+        c2.metric("Scheduled", len(df_res), delta=f"{success_rate:.1f}% Success")
+        c3.metric("Unscheduled", len(unscheduled), delta_color="inverse")
+        c4.metric("Mode", schedule_mode_desc[SCHEDULE_MODE])
 
-        # --- Selectbox อยู่ข้างนอก if button แล้ว (ใช้ข้อมูลจาก session_state) ---
-        all_rooms = sorted(df_res['Room'].unique())
-        selected_room = st.selectbox("🔍 Select Room (เลือกห้องเรียน):", all_rooms)
+        # --- 3.2 Visualization Mode (เลือกมุมมอง) ---
+        st.divider()
+        st.header("📅 Timetable View")
+        
+        # Radio ปุ่มเลือกมุมมอง
+        view_mode = st.radio("Select View Mode:", ["🏫 Room View", "👨‍🏫 Teacher View"], horizontal=True)
 
-# ฟังก์ชันสร้างตารางเรียนแบบ Grid (ฉบับแก้ไข: รองรับเศษนาที)
-        def create_timetable_grid(df, room_name):
-            # 1. กำหนดช่วงเวลา (Slots) ให้เป็นตัวเลขทศนิยมเพื่อการเปรียบเทียบ
-            # เช่น 08:00-09:00 คือ start=8.0, end=9.0
+        if view_mode == "🏫 Room View":
+            all_items = sorted(df_res['Room'].unique())
+            label = "Select Room:"
+            filter_col = "Room"
+        else:
+            # ดึงรายชื่ออาจารย์ทั้งหมด
+            teachers_set = set()
+            for t_str in df_res['Teacher']:
+                if pd.isna(t_str): continue
+                for t in t_str.split(','):
+                    teachers_set.add(t.strip())
+            all_items = sorted(list(teachers_set))
+            label = "Select Teacher:"
+            filter_col = "Teacher"
+
+        selected_item = st.selectbox(label, all_items)
+
+        # ฟังก์ชันสร้างตาราง (Generic)
+        def create_timetable_grid(df, item_name, mode):
             slots = []
             for h in range(8, 20): 
                 if h < 19:
-                    slots.append({
-                        "label": f"{h:02d}:00-{h+1:02d}:00",
-                        "start": float(h),
-                        "end": float(h+1)
-                    })
+                    slots.append({"label": f"{h:02d}:00-{h+1:02d}:00", "start": float(h), "end": float(h+1)})
             
-            # 2. สร้าง DataFrame ว่างๆ โดยใช้ Label เป็นชื่อคอลัมน์
             col_names = [s['label'] for s in slots]
             days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
             df_grid = pd.DataFrame('', index=days, columns=col_names)
 
-            # ดึงข้อมูลเฉพาะห้องที่เลือก
-            room_df = df[df['Room'] == room_name]
+            # Filter ข้อมูล
+            if mode == "Room":
+                item_df = df[df['Room'] == item_name]
+            else:
+                item_df = df[df['Teacher'].str.contains(item_name, regex=False, na=False)]
 
-            for _, row in room_df.iterrows():
-                # 3. แปลงเวลาเริ่ม-จบ เป็นตัวเลขทศนิยม (เช่น 09:30 -> 9.5)
+            for _, row in item_df.iterrows():
                 try:
                     s_parts = row['Start'].split(':')
                     e_parts = row['End'].split(':')
-                    # ชั่วโมง + (นาที / 60)
                     start_val = int(s_parts[0]) + (int(s_parts[1]) / 60.0)
                     end_val = int(e_parts[0]) + (int(e_parts[1]) / 60.0)
-                except:
-                    continue # ข้ามถ้าเวลาผิดพลาด format
+                except: continue
                 
-                # ข้อความที่จะแสดงในช่อง (เพิ่มเวลาเข้าไปด้วย เพื่อความชัดเจน)
-                # เช่น "(09:30) LI101002"
                 short_start = f"{int(s_parts[0]):02d}:{int(s_parts[1]):02d}"
-                course_info = f"({short_start}) {row['Course']} ({row['Type']}) Sec {row['Sec']}"
+                # แสดงข้อมูลในช่อง (ถ้าดูอาจารย์ ให้โชว์ห้อง / ถ้าดูห้อง ให้โชว์ชื่ออาจารย์)
+                info_detail = row['Room'] if mode == "Teacher" else row['Teacher']
+                course_info = f"({short_start}) {row['Course']} ({row['Type']})\n{info_detail}"
 
-                # 4. วนลูปเช็คทุกช่อง (Slot) ว่าวิชานี้คาบเกี่ยวหรือไม่
                 for s in slots:
-                    # Logic การเช็ค Overlap: max(start1, start2) < min(end1, end2)
-                    # แปลว่า: ถ้าเวลาเริ่มวิชา น้อยกว่า เวลาจบช่อง AND เวลาจบวิชา มากกว่า เวลาเริ่มช่อง
                     if max(start_val, s['start']) < min(end_val, s['end']):
-                        
                         col_name = s['label']
-                        
-                        # ถ้าช่องนั้นว่าง ให้ใส่ข้อมูลเลย
                         if df_grid.at[row['Day'], col_name] == '':
                             df_grid.at[row['Day'], col_name] = course_info
                         else:
-                            # ถ้ามีข้อมูลอยู่แล้ว (และไม่ใช่ข้อความเดิม) ให้คั่นด้วย /
                             if course_info not in df_grid.at[row['Day'], col_name]:
                                 df_grid.at[row['Day'], col_name] += ' / ' + course_info
-
             return df_grid
 
-        if selected_room:
-            st.subheader(f"📍 Timetable for: {selected_room}")
-            grid_df = create_timetable_grid(df_res, selected_room)
-            st.dataframe(grid_df, use_container_width=True, height=250)
+        if selected_item:
+            st.subheader(f"📍 Timetable for: {selected_item}")
+            mode_arg = "Room" if view_mode == "🏫 Room View" else "Teacher"
+            grid_df = create_timetable_grid(df_res, selected_item, mode_arg)
+            st.dataframe(grid_df, use_container_width=True, height=300)
 
-            st.caption("📄 Detailed List")
-            room_details = df_res[df_res['Room'] == selected_room][['Day', 'Start', 'End', 'Course', 'Sec', 'Type', 'Teacher']]
-            st.dataframe(room_details, use_container_width=True, hide_index=True)
-
+        # Download CSV
         st.divider()
         csv = df_res.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Full Schedule CSV", data=csv, file_name=f"full_schedule.csv", mime="text/csv")
+        st.download_button("📥 Download Full Schedule CSV", data=csv, file_name="full_schedule.csv", mime="text/csv")
     
     if unscheduled:
         st.divider()
