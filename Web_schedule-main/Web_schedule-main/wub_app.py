@@ -11,20 +11,32 @@ st.title("🎓 Automatic Course Scheduler (Pro Version)")
 # ==========================================
 # 📂 ส่วนที่ 1: Sidebar - Upload & Config
 # ==========================================
-st.header("📂 1. Upload Data Files")
+st.sidebar.header("📂 1. Data Source")
 
-# 1.1 File Uploader: ให้ผู้ใช้เลือกไฟล์ CSV เอง
-uploaded_files = st.file_uploader(
-    "Upload CSV files (room, teacher, courses, etc.)", 
+# 1.1 File Uploader
+uploaded_files = st.sidebar.file_uploader(
+    "Upload CSV files (Optional)", 
     accept_multiple_files=True, 
-    type=['csv']
+    type=['csv'],
+    help="If you don't upload files, the app will use default data from the system."
 )
 
 # ตัวแปรเก็บข้อมูล (Data Store)
 data_store = {}
-required_keys = ['df_room', 'df_teacher_courses', 'df_ai_in', 'df_cy_in', 'all_teacher', 'df_ai_out', 'df_cy_out']
 
-# Logic การจับคู่ไฟล์ที่อัปโหลดเข้าตัวแปร
+# รายชื่อไฟล์ Default (Path ที่คุณเตรียมไว้ในโปรเจกต์)
+# ⚠️ แก้ไข Path ตรงนี้ให้ตรงกับที่อยู่ไฟล์จริงของคุณใน GitHub/Folder
+DEFAULT_PATHS = {
+    'df_room': 'Web_schedule-main/Web_schedule-main/room.csv',
+    'df_teacher_courses': 'Web_schedule-main/Web_schedule-main/teacher_courses.csv',
+    'df_ai_in': 'Web_schedule-main/Web_schedule-main/ai_in_courses.csv',
+    'df_cy_in': 'Web_schedule-main/Web_schedule-main/cy_in_courses.csv',
+    'all_teacher': 'Web_schedule-main/Web_schedule-main/all_teachers.csv',
+    'df_ai_out': 'Web_schedule-main/Web_schedule-main/ai_out_courses.csv',
+    'df_cy_out': 'Web_schedule-main/Web_schedule-main/cy_out_courses.csv'
+}
+
+# --- Step 1: โหลดจากไฟล์ที่อัปโหลด (ถ้ามี) ---
 if uploaded_files:
     for file in uploaded_files:
         fname = file.name.lower()
@@ -35,14 +47,38 @@ if uploaded_files:
         elif 'all_teachers' in fname: data_store['all_teacher'] = pd.read_csv(file)
         elif 'ai_out' in fname: data_store['df_ai_out'] = pd.read_csv(file)
         elif 'cy_out' in fname: data_store['df_cy_out'] = pd.read_csv(file)
-    
-    # เช็คว่าไฟล์ครบไหม
-    uploaded_count = len(data_store)
-    if uploaded_count == 7:
-        st.sidebar.success(f"✅ All files uploaded ({uploaded_count}/7)")
-    else:
-        st.sidebar.warning(f"⚠️ Missing files ({uploaded_count}/7). Please upload all required CSVs.")
 
+# --- Step 2: เช็คไฟล์ที่ขาด แล้วโหลดจาก Default ---
+missing_keys = [k for k in DEFAULT_PATHS if k not in data_store]
+
+if missing_keys:
+    if not uploaded_files:
+        st.sidebar.info("ℹ️ No files uploaded. Using default data.")
+    else:
+        st.sidebar.warning(f"⚠️ Upload incomplete. Loading defaults for missing files...")
+
+    # วนลูปโหลดไฟล์ที่ขาด
+    load_errors = []
+    for key in missing_keys:
+        try:
+            # 📌 ถ้าต้องการโหลดจาก GitHub URL โดยตรง ให้แก้ pd.read_csv(DEFAULT_PATHS[key]) 
+            # เป็น pd.read_csv(f"https://raw.githubusercontent.com/USER/REPO/main/{DEFAULT_PATHS[key]}")
+            
+            data_store[key] = pd.read_csv(DEFAULT_PATHS[key])
+        except Exception as e:
+            load_errors.append(f"{key}: {str(e)}")
+    
+    if load_errors:
+        st.sidebar.error(f"❌ Failed to load defaults:\n" + "\n".join(load_errors))
+    else:
+        # ถ้าโหลด Default สำเร็จครบ
+        if len(data_store) == 7:
+            st.sidebar.success(f"✅ Ready! Loaded {len(data_store)} datasets.")
+
+# เช็คครั้งสุดท้ายก่อนไปต่อ
+if len(data_store) < 7:
+    st.sidebar.error("❌ Critical Error: Missing Data. Please upload files or check default paths.")
+    st.stop() # หยุดการทำงานถ้ารวบรวมไฟล์ไม่ได้เลย
 
 st.header("⚙️ 2. Settings")
 
